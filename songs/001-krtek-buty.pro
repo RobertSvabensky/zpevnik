@@ -1,32 +1,48 @@
 {title: Krtek}
 {artist: Buty}
 
+   A Ami Ami Ami Ami
 
-   A, Ami, Ami, Ami, Ami
-
-1. V zemi se narodil [Ami]krtek, [D]tam svoje mléko [Fmaj7]sál
-   [Dmi]do pusy vlezla mu [B]hlína [G]a on ji vykuck[F]al [E]jééé
-   Chtěl se na ni podí[Am]vat, [D]ale byla tam [Ami]tma, 
-   [Dmi]ty nikdy nebudeš [B]vidět, [G]řekla mu mami[Ami]nka.
+                     Ami    D               Fmaj7
+1. V zemi se narodil krtek, tam svoje mléko sál
+   Dmi               B     G             F  E
+   do pusy vlezla mu hlína a on ji vykuckal jééé
+                      Am   D            Ami
+   Chtěl se na ni podívat, ale byla tam tma, 
+   Dmi              B      G            Ami
+   ty nikdy nebudeš vidět, řekla mu maminka.
 
     mezera
 		
-R1. [G]Zaměstnávám [C]pána se žlutým sa[Ami]kem
-    do práce mi [Dmi]nosí fajfku s tabá[C]kem
-    s [G]tabákem co [C]voní přesně nevím [Ami]čím,
-    v duši se mi [Dmi]honí jeho saka st[C]ín.
+    G           C                Ami
+R1. Zaměstnávám pána se žlutým sakem
+                Dmi               C
+    do práce mi nosí fajfku s tabákem
+      G          C                 Ami
+    s tabákem co voní přesně nevím čím,
+                 Dmi              C
+    v duši se mi honí jeho saka stín.
 
-    Intro. Ami, Dmi, G, Ami
+    Intro:
+    Ami Dmi G Ami
                                    
-R2. [G]Pán se žlutým [C]sakem, mi sirku rozh[Ami]oří 
-    zapálím si [Dmi]fajfku a plynně hovo[C]řím      
-    [G]hovořím a [C]kouřím, bajky vyprá[Ami]vím
-    a v tom kouře [Dmi]dýmu náhle uvi[C]dím. 
+    G             C                   Ami    
+R2. Pán se žlutým sakem, mi sirku rozhoří 
+               Dmi                 C
+    zapálím si fajfku a plynně hovořím      
+    G         C                  Ami
+    hovořím a kouřím, bajky vyprávím
+                  Dmi           C
+    a v tom kouře dýmu náhle uvidím. 
 
-2. Ufo si[C]fon (ufo sifon), Milan si[Ami]lon (Milan silon)
-   to pěkně [Dmi]zapadá, kytka [C]lopata.
-   Lopata do země [Ami]jede, [D]otvírá se škví[Ami]rka
-   [Dmi]vidíme normální [B]nebe, [G]všichni až na krt[Ami]ka!
+         C                        Ami
+2. Ufo sifon (ufo sifon), Milan silon (Milan silon)
+            Dmi           C
+   to pěkně zapadá, kytka lopata.
+                  Ami   D             Ami
+   Lopata do země jede, otvírá se škvírka
+   Dmi             B     G                Ami
+   vidíme normální nebe, všichni až na krtka!
                   
+	
 	Fajront! 
- 
