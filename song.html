@@ -1,0 +1,1627 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=yes">
+<title>Píseň</title>
+
+<link rel="stylesheet" href="assets/style.css" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0f1729" />
+<link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Zpěvník" />
+
+<script defer src="https://unpkg.com/@coderline/alphatab@latest/dist/alphaTab.min.js"></script>
+<style>
+  html, body { margin:0; }
+  :root{
+    --cpfs: calc(20px * var(--song-scale, 1));
+    --chromeH:0px;
+    --chordColor:#22c55e;   /* výchozí barva akordů */
+    --chordScale:1.05;      /* výchozí měřítko akordů vůči textu */
+    --cp-line:1.25;
+    --cp-pad:1.05em;
+    --cp-pad-nochords:0.2em;
+
+    /* >>> OKRAJE TEXTU PÍSNĚ <<< */
+    --song-pad-top: 15px;
+    --song-pad-bottom: 24px;
+    --song-pad-x: 6px;
+    --song-pad-right: 6px;
+
+    --scrollbarW: 3px;
+        --col-count: 1;
+    --col-gap: 14px; /* mezera mezi sloupci */
+    --ink:#e6eef8; 
+    --card:#0f1722;
+
+  }
+
+  /* ChordPro */
+  .cp{ font-family:system-ui,Segoe UI,Arial,sans-serif; color:var(--ink); font-size:var(--cpfs); line-height:var(--cp-line); }
+  .cp .line{ position:relative; white-space:normal; overflow:visible; word-break:keep-all; overflow-wrap:normal; }
+  .cp .seg{ position:relative; display:inline-block; padding-top:var(--cp-pad) }
+  .cp .ch{ position:absolute; left:0; top:0; font-weight:700; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:calc(1em * var(--chordScale)); color:var(--chordColor); }
+  .cp .ly{ visibility:visible; display:inline-block; white-space:pre-wrap; }
+  .cp.nochords .ch{ display:none } .cp.nochords .seg{ padding-top:var(--cp-pad-nochords) }
+  /* když jsou akordy skryté, úplně smaž “prázdné držáky akordů”, aby nevznikaly mezery v textu */
+.cp.nochords .ch-only{ display:none; }
+
+
+  .sheet{ padding:0; background:transparent; border:none; box-shadow:none; }
+
+  #chrome{ position:fixed; top:0; left:0; right:0; z-index:5; background:var(--card);
+    padding:12px 12px 8px; border-bottom:1px solid #192544; transition: transform .2s ease, opacity .2s ease; }
+  body.chrome-hidden #chrome{ transform: translateY(-110%); opacity:0; height:0; padding:0; margin:0; border:0; overflow:hidden; }
+
+  #view .cp{
+    column-count: var(--col-count);
+    column-gap: var(--col-gap);
+  }
+
+  /* ať se jeden řádek neroztrhne mezi sloupce */
+  #view .cp .line{
+    break-inside: avoid;
+    -webkit-column-break-inside: avoid;
+    page-break-inside: avoid;
+  }
+#view{
+  height:100vh; max-height:100vh; overflow:auto; background:transparent; border:0; border-radius:0; box-shadow:none;
+  /*             TOP                         RIGHT (nově)                         BOTTOM                                  LEFT */
+  padding: var(--song-pad-top)
+           var(--song-pad-right, var(--song-pad-x))
+           calc(var(--song-pad-bottom) + env(safe-area-inset-bottom, 0px) + 12px)
+           var(--song-pad-x);
+  scrollbar-width: thin; scrollbar-color:#2c3b60 transparent;
+
+}
+
+  #view::-webkit-scrollbar{ width:var(--scrollbarW); }
+  #view::-webkit-scrollbar-track{ background:transparent; }
+  #view::-webkit-scrollbar-thumb{ background:#2c3b60; border-radius:2px; }
+
+  body:not(.chrome-hidden) #view{ padding-top: calc(var(--chromeH) + var(--song-pad-top)) !important; }
+  body.chrome-hidden #view{ padding-top: max(env(safe-area-inset-top, 0px), var(--song-pad-top)) !important; }
+  body.chrome-hidden .sheet{ margin-top:0 !important; padding-top:0 !important; }
+
+  .chrome-row{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  button.ghost{ background:transparent; border:1px solid #2c3b60; border-radius:8px; padding:4px 8px; color:var(--ink); cursor:pointer; }
+  button.ghost:hover{ background:#17213a; }
+
+  .title-row{ display:flex; align-items:center; gap:8px; margin:8px 0; }
+  #btnSettings{ background:transparent; border:1px solid #2c3b60; color:var(--ink); border-radius:8px; padding:4px 8px; cursor:pointer; }
+  #btnSettings:hover{ background:#17213a; }
+
+  /* „dropdown“ panel nastavení */
+  #settingsPanel{
+    position:absolute; right:12px; top:58px; z-index:6;
+    background:var(--card); border:1px solid #223055; border-radius:10px; padding:10px 12px; box-shadow:0 10px 24px rgba(0,0,0,.35);
+    display:none; min-width:300px;
+  }
+  #settingsPanel .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin:8px 0; }
+  #settingsPanel label{ color:var(--ink); font-size:14px; }
+  #settingsPanel input[type="number"]{ width:100px; padding:4px 6px; border-radius:8px; border:1px solid #2c3b60; background:transparent; color:var(--ink); }
+  #settingsPanel input[type="color"]{ width:40px; height:28px; padding:0; border:1px solid #2c3b60; border-radius:6px; background:transparent; }
+  #settingsPanel .hint{ font-size:12px; color:#9fb0c7; margin-top:4px; }
+  #settingsActions{ display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+  #settingsSave{ border:1px solid #2c3b60; background:transparent; color:var(--ink); border-radius:8px; padding:6px 10px; cursor:pointer; }
+  #settingsSave:hover{ background:#17213a; }
+
+  .auto-scroll{
+    position:fixed; right:16px; bottom:16px; width:56px; height:56px; border-radius:999px;
+    background:transparent; border:2px solid #2c3b60; color:var(--ink); font-size:28px; line-height:1;
+    display:flex; align-items:center; justify-content:center; z-index:10; opacity:.9; cursor:pointer;
+  }
+  .auto-scroll:hover{ opacity:1 } .auto-scroll:active{ transform:scale(.98) } .auto-scroll.hidden{ display:none }
+
+  .container{ padding-right:0 !important; padding-left:0 !important; padding-top:0 !important; }
+
+  /* Dialog sdílení */
+  dialog{ border:1px solid #1f2b46; border-radius:12px; background:var(--card); color:var(--ink); }
+  dialog::backdrop{ background:rgba(0,0,0,.4); }
+</style>
+</head>
+<body>
+  <script>
+(function () {
+  const PASSWORD = ""; // volitelné: nastav heslo (jinak je zpěvník veřejný)
+  const KEY = "zpevnik_access_granted";
+
+  // Pokud není nastavené heslo, nic neblokuj
+  if (!PASSWORD) { return; }
+
+  // Zabraň zobrazení obsahu, dokud se nerozhodne
+  document.documentElement.style.display = "none";
+
+  function deny() {
+    document.documentElement.innerHTML = `
+      <head><title>Přístup odepřen</title></head>
+      <body style="font-family:sans-serif;text-align:center;padding:2rem">
+        <h2>Přístup odepřen</h2>
+        <p>Tento zpěvník je určen pouze pro uzavřenou skupinu.</p>
+      </body>`;
+    document.documentElement.style.display = "block";
+    throw new Error("Access denied");
+  }
+
+  // už jednou ověřený přístup
+  let __ok=false; try{ __ok = (localStorage.getItem(KEY) === "yes"); }catch(_e){ __ok=false; }
+  if (__ok) {
+    document.documentElement.style.display = "block";
+    return;
+  }
+
+  const entered = prompt("Zadej heslo pro přístup ke zpěvníčku:");
+
+  if (entered === null || entered !== PASSWORD) {
+    deny();
+  }
+
+  // správné heslo
+  try{ localStorage.setItem(KEY, "yes"); }catch(_e){}
+  document.documentElement.style.display = "block";
+})();
+</script>
+  <div class="container">
+    <div class="sheet">
+      <div id="chrome">
+<div class="chrome-row">
+  <a id="backLink" href="#">← Zpět</a>
+  <div style="display:flex;gap:8px;align-items:center">
+    <button id="btnSettings" class="ghost" title="Nastavení posuvu a akordů">⚙️</button>
+  </div>
+</div>
+
+<div class="title-row">
+  <h2 id="title" style="margin:0">Načítám…</h2>
+</div>
+
+        <div class="badge" id="meta"></div>
+
+        <!-- panel nastavení -->
+        <div id="settingsPanel" role="dialog" aria-modal="false" aria-labelledby="settingsTitle">
+          <div style="font-weight:600;margin-bottom:6px" id="settingsTitle">Nastavení</div>
+
+          <div class="row">
+            <label for="speedInput">Rychlost posuvu (px/s)</label>
+            <input id="speedInput" type="number" min="5" max="300" step="1">
+          </div>
+          <div class="row">
+            <label for="delayInput">Zpoždění startu (s)</label>
+            <input id="delayInput" type="number" min="0" max="30" step="0.1">
+          </div>
+
+          <div class="row">
+            <label for="chordColorInput">Barva akordů</label>
+            <input id="chordColorInput" type="color">
+          </div>
+          <div class="row">
+            <label for="chordScaleInput">Poměr velikosti akordů</label>
+            <input id="chordScaleInput" type="number" min="0.5" max="2.5" step="0.05">
+          </div>
+
+          <div class="hint">Uložit uloží hodnoty do zařízení a ihned je použije.</div>
+          <div id="settingsActions">
+            <button id="settingsReset" type="button">Původní nastavení</button>
+            <button id="settingsSave">Uložit</button>
+          </div>
+        </div>
+
+        <div id="controls-score" class="player" style="display:none">
+          <button id="play">Přehrát</button>
+          <button id="stop">Stop</button>
+          <label>Tempo <input id="tempo" type="range" min="30" max="200" value="100"></label>
+        </div>
+
+        <div id="controls-cp" class="player" style="display:none">
+          <span class="kbd">Transponovat:
+            <button id="down" type="button">−</button>
+            <button id="up"   type="button">+</button>
+          </span>
+          <span class="kbd">Rolování:
+            <button id="toggleAutoBtn" type="button" aria-label="Zobrazit/skrýt tlačítko autoposuvu">
+              <span id="autoBtnIcon">✅</span>
+            </button>
+          </span>
+          <span class="kbd">Velikost:
+            <button id="fontDown" type="button">−</button>
+            <button id="fontUp"   type="button">+</button>
+          </span>
+          <span class="kbd">Akordy:
+            <button id="toggleChords" type="button" aria-label="Přepnout akordy">
+              <span id="chordsIcon">✅</span>
+            </button>
+          </span>
+          <span class="kbd">Sloupce:
+  <button id="toggleCols" type="button" aria-label="Přepnout počet sloupců" aria-pressed="false">
+    <span id="colsIcon">1</span>
+  </button>
+</span>
+
+        </div>
+      </div>
+
+      <div id="view"></div>
+    </div>
+  </div>
+
+  <!-- Dialog pro SDÍLENÍ (host/připojit) – stejné jako na hlavní stránce -->
+  <dialog id="dlgShare">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+      <strong id="shareTitle">Sdílení</strong>
+      <button id="dlgShareClose">Zavřít</button>
+    </div>
+
+    <div id="shareBody">
+      <div style="display:grid;gap:10px">
+        <label style="display:grid;gap:6px">Přezdívka
+          <input id="shareNick" placeholder="Třeba Jenda" autocomplete="nickname" />
+        </label>
+        <label style="display:grid;gap:6px">Pětičíselný kód
+          <input id="shareCode" inputmode="numeric" pattern="[0-9]*" placeholder="12345" maxlength="5" />
+        </label>
+        <button id="shareJoin" style="width:100%">Vytvořit / přihlásit</button>
+        <div id="shareMsg" class="badge" style="display:none"></div>
+      </div>
+
+      <hr class="sep" />
+
+      <div id="hostPanel" style="display:none">
+        <div class="badge" style="margin-bottom:8px">Jsi <strong>hlavní</strong>. Příchozí žádosti musíš potvrdit.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <button id="hostStop">Zrušit sdílení (odpojit všechny)</button>
+          <button id="hostRefresh">Obnovit seznam</button>
+        </div>
+        <div style="font-weight:600;margin:6px 0">Připojení</div>
+        <ul id="hostMembers" style="list-style:none;margin:0;padding:0;max-height:50vh;overflow:auto"></ul>
+      </div>
+
+      <div id="clientPanel" style="display:none">
+        <div id="clientState" class="badge" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="clientLeave" style="background:#b91c1c;color:#fff;border-color:rgba(255,255,255,0.25)">Odpojit se</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+<button id="autoScroll" class="auto-scroll" title="Auto posuv">∨</button>
+
+<script>
+const params = new URLSearchParams(location.search);
+const id = params.get('id');
+const plId = params.get('pl') || '';
+const book = params.get('book') || '';
+
+let song, SONGS_LIST=[], SONG_INDEX=-1;
+let HIDE_CHORDS = localStorage.getItem('hideChords') === '1';
+  let CP_TEXT = '';      // uložíme si původní ChordPro text pro re-render
+let CP_TRANS = 0;      // aktuální transpozice pro re-render
+
+let justSwipedTs = 0;
+let CHROME_HIDDEN = localStorage.getItem('chromeHidden') === '1';
+if (CHROME_HIDDEN) document.body.classList.add('chrome-hidden');
+
+/* --- Klíče nastavení --- */
+let AUTO_BTN_VISIBLE = localStorage.getItem('autoBtnVisible') !== '0';
+const AUTO_SPEED_KEY='zpj_autoSpeed';
+const AUTO_DELAY_KEY='zpj_autoDelay';
+const CHORD_COLOR_KEY='zpj_chordColor';
+const CHORD_SCALE_KEY='zpj_chordScale';
+const DEF_AUTO_SPEED = 10;      // px/s
+const DEF_AUTO_DELAY = 10;      // s
+const DEF_CHORD_COLOR = '#22c55e';
+const DEF_CHORD_SCALE = 1.05;
+
+/* --- Defaulty (požadováno) --- */
+let AUTO_SPEED = parseFloat(localStorage.getItem(AUTO_SPEED_KEY));
+if (isNaN(AUTO_SPEED)) AUTO_SPEED = 10;   // px/s
+let AUTO_DELAY = parseFloat(localStorage.getItem(AUTO_DELAY_KEY));
+if (isNaN(AUTO_DELAY)) AUTO_DELAY = 10;   // s
+
+let CHORD_COLOR = localStorage.getItem(CHORD_COLOR_KEY) || getComputedStyle(document.documentElement).getPropertyValue('--chordColor').trim() || '#22c55e';
+let CHORD_SCALE = parseFloat(localStorage.getItem(CHORD_SCALE_KEY));
+if (isNaN(CHORD_SCALE)) CHORD_SCALE = 1.05; // poměr
+
+/* aplikuj barvu/scale hned na start */
+document.documentElement.style.setProperty('--chordColor', CHORD_COLOR);
+document.documentElement.style.setProperty('--chordScale', String(CHORD_SCALE));
+
+/* --- Auto scroll --- */
+let autoRunning = false;
+let _autoRaf = 0, _lastTs = 0, _autoDelayTO = 0;
+
+function getViewScrollState(){
+  const view = document.getElementById('view');
+  if (!view) return null;
+
+  const max = Math.max((view.scrollHeight || 0) - (view.clientHeight || 0), 0);
+  return {
+    target: view,
+    scrollTop: view.scrollTop || 0,
+    max
+  };
+}
+
+function setViewScrollTop(value){
+  const view = document.getElementById('view');
+  if (!view) return;
+  view.scrollTop = value;
+}
+
+function updateAutoBtnVisibility(){
+  const ico = document.getElementById('autoBtnIcon');
+  const floater = document.getElementById('autoScroll');
+  const toggle = document.getElementById('toggleAutoBtn');
+  if (ico) ico.textContent = AUTO_BTN_VISIBLE ? '✅' : '❌';
+ if (toggle) toggle.setAttribute('aria-pressed', AUTO_BTN_VISIBLE ? 'true' : 'false');
+  if (floater){
+    floater.classList.toggle('hidden', !AUTO_BTN_VISIBLE);
+    floater.setAttribute('aria-hidden', AUTO_BTN_VISIBLE ? 'false' : 'true');
+  }
+}
+async function waitForScrollableView(minMax = 20, timeoutMs = 1500){
+  const t0 = performance.now();
+  while (performance.now() - t0 < timeoutMs){
+    // vynucení layoutu po reflow (sloupce + akordy)
+    updateChromeHeight();
+    relayoutChords();
+
+    const s = getViewScrollState();
+    if (s && s.max >= minMax) return s;
+
+    // počkej 1 frame
+    await new Promise(r => requestAnimationFrame(r));
+  }
+  return getViewScrollState(); // vrať co je, i kdyby bylo malé
+}
+  
+function setAutoIcon(state){
+  const btn = document.getElementById('autoScroll');
+  if (!btn) return;
+  if (state === 'running') btn.textContent = '■';
+  else if (state === 'waiting') btn.textContent = '…';
+  else btn.textContent = '∨';
+}
+function stopAutoScroll(){
+  autoRunning = false;
+  if(_autoRaf) cancelAnimationFrame(_autoRaf);
+  _autoRaf = 0; _lastTs = 0;
+  if(_autoDelayTO){ clearTimeout(_autoDelayTO); _autoDelayTO = 0; }
+  setAutoIcon('idle');
+}
+function startAutoScroll(){
+  if (autoRunning || _autoDelayTO) return;
+
+  const begin = async () => {
+    autoRunning = true;
+    _lastTs = 0;
+    setAutoIcon('running');
+// počkej, až bude #view opravdu scrollovatelný (PC/tablet často dopočítává layout později)
+await waitForScrollableView(20, 1500);
+
+    const tick = (ts) => {
+      if (!autoRunning) return;
+
+      if (!_lastTs) _lastTs = ts;
+      const dt = (ts - _lastTs) / 1000;
+      _lastTs = ts;
+
+const state = getViewScrollState();
+
+// když ještě není dopočítaný layout (typicky PC/tablet po renderu),
+// tak NEkonči, jen čekej další frame
+if (!state || state.max <= 0){
+  _autoRaf = requestAnimationFrame(tick);
+  return;
+}
+
+
+ // když je max maličké (typicky ještě nedopočítaný layout), neukončuj, jen čekej
+if (state.max < 20){
+  _autoRaf = requestAnimationFrame(tick);
+  return;
+}
+
+// konec – až když jsme opravdu na konci
+if (state.scrollTop >= state.max - 2){
+  stopAutoScroll();
+  return;
+}
+
+
+const next = Math.min(state.max, state.scrollTop + AUTO_SPEED * dt);
+setViewScrollTop(next);
+
+
+      _autoRaf = requestAnimationFrame(tick);
+    };
+
+    _autoRaf = requestAnimationFrame(tick);
+  };
+
+
+
+if (AUTO_DELAY > 0){
+  const btn = document.getElementById('autoScroll');
+  let remaining = AUTO_DELAY;
+  setAutoIcon('waiting');
+  if (btn) btn.textContent = Math.ceil(remaining);
+
+  const tickCountdown = () => {
+    if (!_autoDelayTO) return;
+    remaining -= 0.25;
+    if (btn) btn.textContent = String(Math.max(0, Math.ceil(remaining)));
+  };
+
+  const iv = setInterval(tickCountdown, 250);
+
+  _autoDelayTO = setTimeout(() => {
+    clearInterval(iv);
+    _autoDelayTO = 0;
+    begin();
+  }, AUTO_DELAY * 1000);
+
+} else {
+  begin();
+}
+
+}
+
+function wireAutoScrollDesktopControls(){
+  const view = document.getElementById('view');
+  if (!view) return;
+
+  // když uživatel scrolluje ručně (kolečko/trackpad), autoscroll zastav
+  view.addEventListener('wheel', () => {
+    if (autoRunning || _autoDelayTO) stopAutoScroll();
+  }, { passive:true });
+
+  // když uživatel začne tahat / scrollovat dotykem, autoscroll zastav
+  view.addEventListener('touchstart', () => {
+    if (autoRunning || _autoDelayTO) stopAutoScroll();
+  }, { passive:true });
+
+  // klik do textu (myš / touch) může taky autoscroll stopnout
+  view.addEventListener('pointerdown', () => {
+    if (autoRunning || _autoDelayTO) stopAutoScroll();
+  }, { passive:true });
+
+  // mezerník = start/stop (na PC fakt příjemné)
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space') return;
+
+    // když píšeš do inputu v panelu nastavení, neřeš
+    const tag = (document.activeElement?.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return;
+
+    e.preventDefault();
+    if (autoRunning || _autoDelayTO) stopAutoScroll();
+    else startAutoScroll();
+  });
+}
+
+
+/* --- CZ noty + transpozice (včetně Ab/Db atd.) --- */
+
+// indexy půltónů v CZ/DE zápisu (B = Bb, H = B)
+const NOTE_TO_PC = {
+  'C':0, 'B#':0, 'H#':0,
+  'C#':1, 'DB':1,
+  'D':2,
+  'D#':3, 'EB':3,
+  'E':4, 'FB':4,
+  'F':5, 'E#':5,
+  'F#':6, 'GB':6,
+  'G':7,
+  'G#':8, 'AB':8,
+  'A':9,
+  'A#':10, 'B':10, 'HB':10, // Bb se často píše jako B (CZ/DE)
+  'H':11, 'CB':11
+};
+
+const PC_TO_SHARP_CZ = ['C','C#','D','D#','E','F','F#','G','G#','A','B','H'];
+const PC_TO_FLAT_CZ  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','B','H']; // 11 držíme jako H
+
+function _noteStyle(s){
+  // zachovej styl: kdo zadal béčko, dostane béčko (Db/Ab/Bb…)
+  return (/[b]/i.test(s)) ? 'flat' : 'sharp';
+}
+
+function _normNoteToken(token){
+  // token typu "Ab" => "AB", "Db" => "DB", "C#" => "C#"
+  const m = String(token || '').trim().match(/^([A-Ha-h])([#b]?)$/);
+  if(!m) return null;
+  return (m[1].toUpperCase() + (m[2] || '')).toUpperCase();
+}
+
+function transposeNote(n, semi){
+  const norm = _normNoteToken(n);
+  if(!norm) return n;
+
+  const pc = NOTE_TO_PC[norm];
+  if(pc === undefined) return n;
+
+  const outPc = (pc + semi + 120) % 12;
+  const style = _noteStyle(n);
+  return (style === 'flat') ? PC_TO_FLAT_CZ[outPc] : PC_TO_SHARP_CZ[outPc];
+}
+
+function transposeChord(token, semi){
+  // root + zbytek (+ volitelný bas)
+  // např: "Abm7/Gb", "Db/F", "C#sus4", "Hmi", "B"
+  const m = String(token).match(/^([A-Ha-h])([#b]?)(.*?)(?:\/([A-Ha-h])([#b]?)(.*))?$/);
+  if (!m) return token;
+
+  const rootIn = (m[1] || '') + (m[2] || '');
+  const rest1  = (m[3] || '');
+  const bassIn = m[4] ? ((m[4] || '') + (m[5] || '')) : null;
+  const rest2  = m[6] || '';
+
+  const rootT = transposeNote(rootIn, semi);
+  const bassT = bassIn ? transposeNote(bassIn, semi) : null;
+
+  return rootT + rest1 + (bassT ? ('/' + bassT) : '') + rest2;
+}
+
+/* --- Parser + render --- */
+function parseChordPro(text){
+  const meta = {}, raw = text.replace(/\r/g,'').split('\n');
+  const body=[]; for(const line of raw){ const m=line.match(/^\{(\w+)\s*:\s*(.*?)\s*\}$/); if(m){ meta[m[1].toLowerCase()]=m[2]; continue; } body.push(line); }
+  while(body.length && !body[0].trim()) body.shift();
+  while(body.length && !body[body.length-1].trim()) body.pop();
+  const lines=[]; let prevEmpty=false;
+  for(const l of body){ const empty=!l.trim(); if(empty && prevEmpty) continue; lines.push(l); prevEmpty=empty; }
+  return { meta, lines };
+}
+function renderChordPro(text, transposeSemi=0){
+  const {lines} = parseChordPro(text);
+  const cont=document.createElement('div'); cont.className='cp';
+  for(const raw of lines){
+    if(!raw.trim()){ cont.appendChild(document.createElement('br')); continue; }
+    const line=document.createElement('div'); line.className='line';
+    let i=0, pending=null;
+    while(i<raw.length){
+      if(raw[i]=='['){
+        const close=raw.indexOf(']', i+1);
+        if(close!==-1){
+          const token=raw.slice(i+1, close); i=close+1;
+if(i>=raw.length || raw[i]=='['){
+  const seg=document.createElement('span'); 
+  seg.className='seg ch-only'; // <<< důležité
+  const ch=document.createElement('span'); 
+  ch.className='ch'; 
+  ch.textContent=transposeChord(token, transposeSemi);
+
+  const ly=document.createElement('span'); 
+  ly.className='ly'; 
+  ly.textContent='\u00A0'; // šířka pro akord (NBSP), ale při nochords seg zmizí
+
+  seg.appendChild(ch); 
+  seg.appendChild(ly); 
+  line.appendChild(seg); 
+  pending=null; 
+  continue;
+}
+
+          else{ pending=token; continue; }
+        }
+      }
+      let j=i; while(j<raw.length && raw[j]!='[') j++;
+      const lyr = raw.slice(i, j);
+      // když je pending akord a mezi ním a dalším tokenem není žádný text,
+// vytvoříme držák akordu, který při skrytí akordů úplně zmizí
+if (pending && lyr === '') {
+  const seg=document.createElement('span');
+  seg.className='seg ch-only';
+  const ch=document.createElement('span'); ch.className='ch'; ch.textContent=transposeChord(pending, transposeSemi);
+  const ly=document.createElement('span'); ly.className='ly'; ly.textContent='\u00A0';
+  seg.appendChild(ch); seg.appendChild(ly); line.appendChild(seg);
+  pending=null; i=j;
+  continue;
+}
+
+      const seg=document.createElement('span'); seg.className='seg';
+      const ch=document.createElement('span'); ch.className='ch'; ch.textContent=pending?transposeChord(pending, transposeSemi):'';
+      const ly=document.createElement('span'); ly.className='ly'; ly.textContent=lyr;
+      seg.appendChild(ch); seg.appendChild(ly); line.appendChild(seg); pending=null; i=j;
+    }
+if(pending){
+  const seg=document.createElement('span'); 
+  seg.className='seg ch-only';
+  const ch=document.createElement('span'); 
+  ch.className='ch'; 
+  ch.textContent=transposeChord(pending, transposeSemi);
+
+  const ly=document.createElement('span'); 
+  ly.className='ly'; 
+  ly.textContent='\u00A0';
+
+  seg.appendChild(ch); 
+  seg.appendChild(ly); 
+  line.appendChild(seg);
+}
+
+    
+    cont.appendChild(line);
+  }
+  return cont;
+}
+function renderChordProPlain(text){
+  const { lines } = parseChordPro(text);
+  const cont = document.createElement('div');
+  cont.className = 'cp nochords'; // nochords kvůli CSS (padding apod.)
+
+  for (const raw of lines){
+    if(!raw.trim()){
+      cont.appendChild(document.createElement('br'));
+      continue;
+    }
+
+    // Odstraň akordy [C], [Am7/G] apod. a nech jen text
+    const plain = raw.replace(/\[[^\]]*\]/g, '');
+
+    const line = document.createElement('div');
+    line.className = 'line';
+
+    // Tady už je to jeden textový uzel => slova se nikdy nerozseknou “zatáčk y”
+    line.textContent = plain;
+
+    cont.appendChild(line);
+  }
+  return cont;
+}
+
+  
+const MIN_CHORD_GAP=4;
+function fixChordOverlaps(root){
+  const lines=root.querySelectorAll('.line');
+  lines.forEach(line=>{
+    line.querySelectorAll('.seg').forEach(seg=>{ seg.style.marginLeft=''; });
+    let prevRight=-Infinity, lastTop=null;
+    const chords=Array.from(line.querySelectorAll('.ch'));
+    chords.forEach(ch=>{
+      const seg=ch.parentElement, r=ch.getBoundingClientRect();
+      if(lastTop!==null && (r.top-lastTop)>0.5){ prevRight=-Infinity; }
+      lastTop=r.top;
+      const needLeft=prevRight+MIN_CHORD_GAP, need=needLeft-r.left;
+      if(need>0){ const cur=parseFloat(seg.style.marginLeft||'0'); seg.style.marginLeft=(cur+need)+'px'; const nr=ch.getBoundingClientRect(); prevRight=nr.right; }
+      else { prevRight=r.right; }
+    });
+    const segs=Array.from(line.querySelectorAll('.seg'));
+    if(segs.length){
+      const rects=segs.map(s=>s.getBoundingClientRect());
+      const firstLeft=Math.min(...rects.map(r=>r.left));
+      const firstTop=Math.min(...rects.map(r=>r.top));
+      const LEFT_TOL=16, TOP_TOL=0.5;
+      segs.forEach((seg,i)=>{ const r=rects[i]; const startsNew=(r.top-firstTop)>TOP_TOL && (r.left-firstLeft)<LEFT_TOL; if(startsNew) seg.style.marginLeft='0px'; });
+    }
+  });
+}
+
+/* --- Layout helpers --- */
+function relayoutChords(){ const cp=document.querySelector('#view .cp'); if(!cp) return; requestAnimationFrame(()=>fixChordOverlaps(cp)); }
+function updateChromeHeight(){ const ch=document.getElementById('chrome'); const h=ch?ch.getBoundingClientRect().height:0; document.documentElement.style.setProperty('--chromeH',(h||0)+'px'); }
+function setChromeHidden(h){ CHROME_HIDDEN=!!h; document.body.classList.toggle('chrome-hidden', CHROME_HIDDEN); localStorage.setItem('chromeHidden', CHROME_HIDDEN?'1':'0'); updateChromeHeight(); }
+
+/* --- ovládání lišty + swipe --- */
+function wireDoubleToggle(){
+  const view=document.getElementById('view'); if(!view) return;
+  let lastTapTime=0,lastX=0,lastY=0,recentToggleTs=0;
+  view.addEventListener('dblclick', ()=>{ if(Date.now()-recentToggleTs<400) return; if(Date.now()-justSwipedTs<350) return; setChromeHidden(!document.body.classList.contains('chrome-hidden')); });
+  view.addEventListener('touchend', (e)=>{
+    if(e.touches&&e.touches.length) return;
+    if(Date.now()-justSwipedTs<350) return;
+    const t=Date.now(), touch=e.changedTouches[0], x=touch.clientX, y=touch.clientY;
+    const withinTime = (t-lastTapTime)<300;
+    const withinDist = Math.hypot(x-lastX,y-lastY)<30;
+    if(withinTime && withinDist){ e.preventDefault(); setChromeHidden(!document.body.classList.contains('chrome-hidden')); recentToggleTs=t; lastTapTime=0; }
+    else { lastTapTime=t; lastX=x; lastY=y; }
+  }, {passive:false});
+}
+function wireSwipeNavigation(){
+  const view = document.getElementById('view');
+  if (!view) return;
+
+  let sx = 0;
+  let sy = 0;
+  let t0 = 0;
+
+  view.addEventListener('touchstart', (e)=>{
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    sx = t.clientX;
+    sy = t.clientY;
+    t0 = Date.now();
+  }, { passive:true });
+
+  view.addEventListener('touchend', (e)=>{
+    const t = e.changedTouches[0];
+    if (!t) return;
+
+    const dx = t.clientX - sx;
+    const dy = t.clientY - sy;
+    const dt = Date.now() - t0;
+
+    // jasné, krátké, horizontální gesto
+    if (
+      Math.abs(dx) > 80 &&
+      Math.abs(dy) < 60 &&
+      dt < 600
+    ){
+      if (dx < 0) goNextSong();
+      else goPrevSong();
+    }
+  }, { passive:true });
+}
+
+
+function goNextSong(){
+  if (SONGS_LIST.length < 2 || SONG_INDEX < 0) return;
+  const next=(SONG_INDEX+1)%SONGS_LIST.length;
+  const nxtId = SONGS_LIST[next];
+ const extra = (plId ? `&pl=${encodeURIComponent(plId)}` : '') +
+              (book ? `&book=${encodeURIComponent(book)}` : '');
+  location.replace(`song.html?id=${encodeURIComponent(nxtId)}${extra}`);
+}
+function goPrevSong(){
+  if (SONGS_LIST.length < 2 || SONG_INDEX < 0) return;
+  const prev=(SONG_INDEX-1+SONGS_LIST.length)%SONGS_LIST.length;
+  const prvId = SONGS_LIST[prev];
+ const extra = (plId ? `&pl=${encodeURIComponent(plId)}` : '') +
+              (book ? `&book=${encodeURIComponent(book)}` : '');
+
+  location.replace(`song.html?id=${encodeURIComponent(prvId)}${extra}`);
+}
+
+/* --- velikost textu napříč PWA --- */
+const ZPJ_FONT_KEY = 'zpj-fontScale';
+
+  function getScale(){
+  const s = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--song-scale')) || 1;
+  return s > 0 ? s : 1;
+}
+function setScale(s){
+  const c = Math.min(3, Math.max(0.5, s));
+  document.documentElement.style.setProperty('--song-scale', String(c));
+  localStorage.setItem(ZPJ_FONT_KEY, String(c));
+  relayoutChords();
+}
+/* --- sloupce (bez přepočtu velikosti) --- */
+const ZPJ_COLS_KEY = 'zpj-cols'; // "1" nebo "2"
+let COLS = parseInt(localStorage.getItem(ZPJ_COLS_KEY) || '1', 10);
+if (![1,2].includes(COLS)) COLS = 1;
+
+function updateColsIcon(){
+  const ico = document.getElementById('colsIcon');
+  const btn = document.getElementById('toggleCols');
+  if (ico) ico.textContent = String(COLS);
+  if (btn) btn.setAttribute('aria-pressed', COLS === 2 ? 'true' : 'false');
+}
+
+function applyColumns(){
+  document.documentElement.style.setProperty('--col-count', String(COLS));
+  updateColsIcon();
+  relayoutChords();
+}
+
+async function load(){
+  // 1) Načti seznam písní
+  const data = await fetch('./data/songs.json', { cache:'no-store' })
+                      .then(r=>r.json()).catch(()=>[]);
+
+  // 2) Sestav pořadí pro swipe:
+  //    - když je plId => pořadí z playlistu
+  //    - jinak když je book => jen písně ze zvoleného zpěvníku, seřazené podle čísla ve zpěvníku
+  //    - jinak všechny písně v pořadí z JSONu
+  if (plId){
+    const pls = JSON.parse(localStorage.getItem('zpj_playlists')||'[]');
+    const pl = pls.find(p=>p.id===plId);
+    SONGS_LIST = (pl && Array.isArray(pl.items) && pl.items.length)
+      ? pl.items.slice()
+      : data.map(s=>s.id);
+  } else if (book){
+    const filtered = data
+      .filter(s => s.books && Object.prototype.hasOwnProperty.call(s.books, book))
+      .sort((a,b) => (a.books?.[book] ?? 1e9) - (b.books?.[book] ?? 1e9));
+    SONGS_LIST = filtered.map(s=>s.id);
+    // pro návrat na index nech vybraný zpěvník i tam
+    localStorage.setItem('zpj_book', book);
+  } else {
+    SONGS_LIST = data.map(s=>s.id);
+  }
+  SONG_INDEX = SONGS_LIST.indexOf(id);
+
+  // 3) Najdi právě otevřenou píseň
+  song = data.find(s=>s.id===id);
+  if(!song){
+    document.getElementById('title').textContent='Píseň nenalezena';
+    return;
+  }
+  document.getElementById('title').textContent = `${song.number ?? '–'} · ${song.title}`;
+  document.getElementById('meta').textContent = song.author || '';
+
+  // 4) Zpět odkaz (playlist / zpěvník / hlavní seznam)
+  const backLink = document.getElementById('backLink');
+  if (plId){
+    backLink.textContent = '← Zpět na playlist';
+    backLink.onclick = (e)=>{ e.preventDefault(); location.replace('./index.html#pl:' + encodeURIComponent(plId)); };
+  } else if (book){
+    backLink.textContent = '← Zpět na zpěvník';
+    backLink.onclick = (e)=>{ e.preventDefault(); location.replace('./'); };
+  } else {
+    backLink.textContent = '← Zpět na seznam';
+    // V režimu sdílení může "hlavní" během připojení vystřídat víc písní.
+    // Aby tlačítko Zpět (i HW back) neprocházelo historii písní, vracíme se vždy přímo na seznam.
+    backLink.onclick = (e)=>{ e.preventDefault(); location.replace('./'); };
+  }
+
+  // 5) Render: ChordPro vs. AlphaTab
+  if (song.type === 'chordpro' || /\.pro$|\.cho$/i.test(song.file)) {
+    document.getElementById('controls-cp').style.display='flex';
+    const text = await fetch(song.file).then(r=>r.text());
+CP_TEXT = text;
+let trans = 0;
+CP_TRANS = 0;
+
+const render = ()=>{
+  CP_TRANS = trans; // uložit pro případné re-render při vypnutí akordů
+  const view = document.getElementById('view');
+
+  // Když jsou akordy skryté: renderuj čistý text bez segmentů => žádné “zatáčk y”
+  if (HIDE_CHORDS){
+    const el = renderChordProPlain(text);
+    view.innerHTML = '';
+    view.appendChild(el);
+    applyChordVisibility();
+    updateChromeHeight();
+    requestAnimationFrame(()=>{ /* jen aby se layout dosadil */ });
+    return;
+  }
+
+  // Akordy zapnuté: klasický render se segmenty + vyrovnání
+  const el = renderChordPro(text, trans);
+  view.innerHTML='';
+  view.appendChild(el);
+  requestAnimationFrame(()=>fixChordOverlaps(el));
+  applyChordVisibility();
+  updateChromeHeight();
+};
+
+render();
+
+document.getElementById('up').onclick   = ()=>{ trans += 1; render(); };
+document.getElementById('down').onclick = ()=>{ trans -= 1; render(); };
+
+
+    let scale = getScale();
+    document.getElementById('fontUp').onclick   = ()=>{ scale = Math.min(3,   +(scale + 0.1).toFixed(2)); setScale(scale); };
+    document.getElementById('fontDown').onclick = ()=>{ scale = Math.max(0.5, +(scale - 0.1).toFixed(2)); setScale(scale); };
+
+document.getElementById('toggleChords').onclick = ()=>{
+  HIDE_CHORDS = !HIDE_CHORDS;
+  localStorage.setItem('hideChords', HIDE_CHORDS ? '1' : '0');
+
+  // re-render podle stavu (plain vs segmenty)
+  const view = document.getElementById('view');
+  if (HIDE_CHORDS){
+    view.innerHTML = '';
+    view.appendChild(renderChordProPlain(CP_TEXT));
+    applyChordVisibility();
+    updateChromeHeight();
+  } else {
+    view.innerHTML = '';
+    const el = renderChordPro(CP_TEXT, CP_TRANS);
+    view.appendChild(el);
+    requestAnimationFrame(()=>fixChordOverlaps(el));
+    applyChordVisibility();
+    updateChromeHeight();
+  }
+};
+
+  } else {
+    document.getElementById('controls-score').style.display='flex';
+    const el=document.getElementById('view');
+    const at=new alphaTab.AlphaTabApi(el, { file:song.file, player:{ enablePlayer:true }});
+    document.getElementById('play').onclick = ()=> at.playPause();
+    document.getElementById('stop').onclick = ()=> at.stop();
+    document.getElementById('tempo').oninput = e=> at.playbackSpeed = e.target.value/100;
+    at.renderFinished.on(()=> updateChromeHeight());
+  }
+
+  // 6) Auto-scroll: tlačítko + ikony
+  const tgl = document.getElementById('toggleAutoBtn');
+  if (tgl) tgl.onclick = ()=>{
+    AUTO_BTN_VISIBLE = !AUTO_BTN_VISIBLE;
+    localStorage.setItem('autoBtnVisible', AUTO_BTN_VISIBLE ? '1' : '0');
+    if (!AUTO_BTN_VISIBLE && (autoRunning || _autoDelayTO)) stopAutoScroll();
+    updateAutoBtnVisibility();
+  };
+  const autoBtn=document.getElementById('autoScroll');
+  if (autoBtn) autoBtn.onclick=()=>{ if (autoRunning || _autoDelayTO) stopAutoScroll(); else startAutoScroll(); };
+  updateAutoBtnVisibility();
+  setAutoIcon('idle');
+
+  
+  // 6.5) Sloupce 1/2
+  const colsBtn = document.getElementById('toggleCols');
+  if (colsBtn) colsBtn.onclick = ()=>{
+    COLS = (COLS === 1) ? 2 : 1;
+    localStorage.setItem(ZPJ_COLS_KEY, String(COLS));
+    applyColumns();
+  };
+  applyColumns();
+
+
+  // 7) Panel nastavení – předvyplň + ulož/reset
+  const btnSettings = document.getElementById('btnSettings');
+  const panel = document.getElementById('settingsPanel');
+  const speedInput = document.getElementById('speedInput');
+  const delayInput = document.getElementById('delayInput');
+  const chordColorInput = document.getElementById('chordColorInput');
+  const chordScaleInput = document.getElementById('chordScaleInput');
+  if (speedInput) speedInput.value = String(AUTO_SPEED);
+  if (delayInput) delayInput.value = String(AUTO_DELAY);
+  if (chordColorInput) chordColorInput.value = CHORD_COLOR;
+  if (chordScaleInput) chordScaleInput.value = String(CHORD_SCALE);
+
+  if (btnSettings && panel){
+    btnSettings.addEventListener('click', ()=>{
+      panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'block' : 'none';
+    });
+    document.addEventListener('click', (e)=>{
+      if (!panel.contains(e.target) && e.target !== btnSettings){
+        panel.style.display = 'none';
+      }
+    });
+  }
+
+  document.getElementById('settingsSave')?.addEventListener('click', ()=>{
+    const sp = Math.max(5, Math.min(300, Number(speedInput.value)||10));
+    AUTO_SPEED = sp; localStorage.setItem(AUTO_SPEED_KEY, String(sp));
+
+    const dl = Math.max(0, Math.min(30, Number(delayInput.value)||10));
+    AUTO_DELAY = dl; localStorage.setItem(AUTO_DELAY_KEY, String(dl));
+
+    const col = chordColorInput.value || '#22c55e';
+    CHORD_COLOR = col;
+    document.documentElement.style.setProperty('--chordColor', col);
+    localStorage.setItem(CHORD_COLOR_KEY, col);
+
+    let scl = parseFloat(chordScaleInput.value);
+    if (isNaN(scl)) scl = 1.05;
+    scl = Math.max(0.5, Math.min(2.5, scl));
+    CHORD_SCALE = scl;
+    document.documentElement.style.setProperty('--chordScale', String(scl));
+    localStorage.setItem(CHORD_SCALE_KEY, String(scl));
+
+    relayoutChords();
+    panel.style.display = 'none';
+  });
+
+  document.getElementById('settingsReset')?.addEventListener('click', () => {
+    if (speedInput)       speedInput.value       = String(DEF_AUTO_SPEED);
+    if (delayInput)       delayInput.value       = String(DEF_AUTO_DELAY);
+    if (chordColorInput)  chordColorInput.value  = DEF_CHORD_COLOR;
+    if (chordScaleInput)  chordScaleInput.value  = String(DEF_CHORD_SCALE);
+
+    AUTO_SPEED = DEF_AUTO_SPEED;
+    localStorage.setItem(AUTO_SPEED_KEY, String(DEF_AUTO_SPEED));
+
+    AUTO_DELAY = DEF_AUTO_DELAY;
+    localStorage.setItem(AUTO_DELAY_KEY, String(DEF_AUTO_DELAY));
+
+    CHORD_COLOR = DEF_CHORD_COLOR;
+    document.documentElement.style.setProperty('--chordColor', DEF_CHORD_COLOR);
+    localStorage.setItem(CHORD_COLOR_KEY, DEF_CHORD_COLOR);
+
+    CHORD_SCALE = DEF_CHORD_SCALE;
+    document.documentElement.style.setProperty('--chordScale', String(DEF_CHORD_SCALE));
+    localStorage.setItem(CHORD_SCALE_KEY, String(DEF_CHORD_SCALE));
+
+    relayoutChords();
+    panel.style.display = 'none';
+  });
+
+  // 8) Ostatní drátování
+try { wireDoubleToggle(); } catch(e){ console.warn('wireDoubleToggle failed', e); }
+try { wireSwipeNavigation(); } catch(e){ console.warn('wireSwipeNavigation failed', e); }
+wireAutoScrollDesktopControls();
+updateChromeHeight();
+
+}
+
+
+function applyChordVisibility(){
+  const cp=document.querySelector('#view .cp'); if(!cp) return;
+  if (HIDE_CHORDS) cp.classList.add('nochords'); else cp.classList.remove('nochords');
+  const ico=document.getElementById('chordsIcon'); if(ico) ico.textContent = HIDE_CHORDS ? '❌' : '✅';
+}
+
+/* --- resize/orientation --- */
+let _resizeTO;
+function onResizeReflow(){
+  updateChromeHeight();
+  relayoutChords();
+}
+
+window.addEventListener('resize', ()=>{ clearTimeout(_resizeTO); _resizeTO=setTimeout(onResizeReflow,120); });
+window.addEventListener('orientationchange', ()=>{ setTimeout(onResizeReflow,150); });
+
+/* --- SW --- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' })
+      .then(r => console.log('Zpjěvníček SW scope:', r.scope))
+      .catch(console.error);
+  });
+}
+
+/* --- globální scale --- */
+(function applyGlobalSongScale(){
+  const val = parseFloat(localStorage.getItem('zpj-fontScale'));
+  if (!isNaN(val) && val > 0) document.documentElement.style.setProperty('--song-scale', String(val));
+})();
+
+/* --- HW tlačítko zpět --- */
+window.addEventListener('popstate', (e) => {
+  e.preventDefault();
+  // NIKDY neprocházej historii písní – vždy zpět na seznam (playlist / zpěvník / hlavní seznam)
+  if (plId) location.replace('./index.html#pl:' + encodeURIComponent(plId));
+  else location.replace('./');
+});
+
+load();
+</script>
+
+<!-- ======================== SDÍLENÍ OVÁDÁNÍ (Firebase) ========================
+  Stejná logika jako v index.html. Doplň FIREBASE_CONFIG buď globálně do window.FIREBASE_CONFIG,
+  nebo přímo v tomto souboru (viz níže).
+============================================================================= -->
+<script type="module">
+// ======================== SDÍLENÍ OVLÁDÁNÍ (Firebase RTDB, bez Auth) ========================
+// Pravidla: rooms/$code { .read: true, .write: true }
+// - clientId je lokální (localStorage) -> members/<clientId>
+// - hostId je uložen v rooms/<code>/hostId
+// - host schvaluje členy změnou members/<id>/status z 'pending' -> 'active'
+// - host zapisuje rooms/<code>/current.path = location.pathname + location.search
+// - klienti poslouchají current.path a přesměrují se
+// ===========================================================================================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+import {
+  getDatabase, ref, set, update, onValue, onDisconnect, off, get, remove, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.13.1/firebase-database.js";
+
+const FIREBASE_CONFIG = window.FIREBASE_CONFIG || window.__FIREBASE_CONFIG || null;
+
+const HAS_CONFIG = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.databaseURL);
+
+const app = HAS_CONFIG ? initializeApp(FIREBASE_CONFIG) : null;
+const db  = app ? getDatabase(app) : null;
+
+// --- UI prvky ---
+const btnShare      = document.getElementById('btnShare');
+const dlgShare      = document.getElementById('dlgShare');
+const dlgShareClose = document.getElementById('dlgShareClose');
+const shareNick     = document.getElementById('shareNick');
+const shareCode     = document.getElementById('shareCode');
+const shareJoin     = document.getElementById('shareJoin');
+const shareMsg      = document.getElementById('shareMsg');
+
+const hostPanel     = document.getElementById('hostPanel');
+const hostMembers   = document.getElementById('hostMembers');
+const hostStop      = document.getElementById('hostStop');
+const hostRefresh   = document.getElementById('hostRefresh');
+
+const clientPanel   = document.getElementById('clientPanel');
+const clientState   = document.getElementById('clientState');
+const clientLeave   = document.getElementById('clientLeave');
+
+// --- Persist keys ---
+const CLIENT_KEY  = 'zpjevnicek_share_clientId_v1';
+const SESSION_KEY = 'zpjevnicek_share_session_v1'; // { code, nick }
+
+// --- Stav ---
+let state = {
+  code: null,
+  nick: null,
+  clientId: null,
+  isHost: false,
+  meStatus: 'off',
+  stopMe: null,
+  stopMembers: null,
+  stopCurrent: null,
+  stopRoom: null,
+  attached: false,
+};
+
+
+// --- Safe storage (localStorage může být blokované – použij fallback přes window.name) ---
+function _safeParseName(){
+  try{ return window.name ? JSON.parse(window.name) : {}; }catch(_e){ return {}; }
+}
+function _safeWriteName(obj){
+  try{ window.name = JSON.stringify(obj||{}); }catch(_e){}
+}
+function sGet(key){
+  try{ const v = localStorage.getItem(key); if (v !== null) return v; }catch(_e){}
+  const obj = _safeParseName();
+  return (obj && Object.prototype.hasOwnProperty.call(obj,key)) ? obj[key] : null;
+}
+function sSet(key, val){
+  try{ localStorage.setItem(key, val); return; }catch(_e){}
+  const obj = _safeParseName();
+  obj[key] = val;
+  _safeWriteName(obj);
+}
+function sDel(key){
+  try{ localStorage.removeItem(key); }catch(_e){}
+  const obj = _safeParseName();
+  if (obj && Object.prototype.hasOwnProperty.call(obj,key)) delete obj[key];
+  _safeWriteName(obj);
+}
+function getShareCodeFromUrl(){
+  try{
+    const u = new URL(location.href);
+    const c = (u.searchParams.get('share')||'').trim();
+    return (/^\d{5}$/.test(c)) ? c : null;
+  }catch(_e){ return null; }
+}
+function ensureShareParamInUrl(code){
+  try{
+    const u = new URL(location.href);
+    if (u.searchParams.get('share') !== code){
+      u.searchParams.set('share', code);
+      history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString() + u.hash);
+    }
+  }catch(_e){}
+}
+function broadcastPath(code){
+  const u = new URL(location.href);
+  u.searchParams.set('share', code);
+  return u.pathname + '?' + u.searchParams.toString(); // bez hash, držíme se původního formátu
+}
+
+function getClientId(){
+  let id = sGet(CLIENT_KEY);
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(16).slice(2) + Date.now().toString(16)))
+      .replace(/-/g,'').slice(0,16);
+    sSet(CLIENT_KEY, id);
+  }
+  return id;
+}
+
+function saveSession(code, nick){
+  try{ sSet(SESSION_KEY, JSON.stringify({ code, nick })); }catch(_e){}
+}
+function loadSession(){
+  try{
+    const raw = sGet(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(_e){ return null; }
+}
+function clearSession(){
+  try{ sDel(SESSION_KEY); }catch(_e){}
+}
+
+function normCode(v){
+  const s = (v||'').toString().trim();
+  if (!/^\d{5}$/.test(s)) return null;
+  return s;
+}
+
+function setMsg(text, type='info'){
+  if (!shareMsg) return;
+  shareMsg.style.display = text ? '' : 'none';
+  shareMsg.textContent = text || '';
+  const map = {
+    info: '#1f2937',
+    ok:   '#14532d',
+    warn: '#7c2d12',
+    err:  '#7f1d1d'
+  };
+  shareMsg.style.background = map[type] || map.info;
+}
+
+function paintShare(mode){
+  if (!btnShare) return;
+  const bg = {
+    off:    '',
+    host:   '#123b1f',
+    client: '#1b2a56',
+    paused: '#7c2d12',
+    err:    '#7f1d1d'
+  }[mode] || '';
+  btnShare.style.background = bg;
+  btnShare.style.opacity = bg ? '1' : '';
+}
+
+function roomRef(code){ return ref(db, `rooms/${code}`); }
+function currentRef(code){ return ref(db, `rooms/${code}/current`); }
+function membersRef(code){ return ref(db, `rooms/${code}/members`); }
+function memberRef(code, clientId){ return ref(db, `rooms/${code}/members/${clientId}`); }
+
+function stopAllListeners(){
+  for (const k of ['stopMe','stopMembers','stopCurrent','stopRoom']) {
+    if (state[k]) { try{ state[k](); }catch(_e){} state[k]=null; }
+  }
+}
+
+async function detach(alsoRemoveRoom=false){
+  if (!db || !state.attached || !state.code) {
+    stopAllListeners();
+    state = {...state, code:null, isHost:false, attached:false, meStatus:'off'};
+    hostPanel && (hostPanel.style.display='none');
+    clientPanel && (clientPanel.style.display='none');
+    paintShare('off');
+    clearSession();
+    return;
+  }
+  const code = state.code;
+  const cid  = state.clientId;
+
+  stopAllListeners();
+
+  try { await remove(memberRef(code, cid)); } catch(_e){}
+
+  if (alsoRemoveRoom && state.isHost) {
+    try { await remove(roomRef(code)); } catch(_e){}
+  }
+
+  state = {...state, code:null, isHost:false, attached:false, meStatus:'off'};
+  hostPanel && (hostPanel.style.display='none');
+  clientPanel && (clientPanel.style.display='none');
+  paintShare('off');
+  setMsg('', 'info');
+  clearSession();
+}
+
+function listenRoomClosed(code){
+  const r = roomRef(code);
+  const cb = (snap)=>{
+    if (!snap.exists()) {
+      paintShare('paused');
+      setMsg('Místnost byla zrušena.', 'warn');
+      clientState && (clientState.textContent = 'Místnost byla zrušena.');
+      detach(false);
+    }
+  };
+  onValue(r, cb);
+  return ()=> off(r, 'value', cb);
+}
+
+function listenMe(code, cid){
+  const m = memberRef(code, cid);
+  const cb = (snap)=>{
+    if (!snap.exists()) {
+      paintShare('paused');
+      clientState && (clientState.textContent = 'Odpojeno.');
+      setMsg('Byl jsi odpojen (nebo odmítnut).', 'warn');
+      clientPanel && (clientPanel.style.display='');
+      hostPanel && (hostPanel.style.display='none');
+      state.meStatus = 'paused';
+      return;
+    }
+    const me = snap.val() || {};
+    const st = me.status || 'pending';
+    state.meStatus = st;
+
+    if (!state.isHost) {
+      clientPanel && (clientPanel.style.display='');
+      hostPanel && (hostPanel.style.display='none');
+
+      if (st === 'pending') {
+        paintShare('paused');
+        clientState && (clientState.textContent = 'Čekám na potvrzení od hlavního telefonu…');
+        setMsg('Čeká se na potvrzení hosta.', 'info');
+        if (state.stopCurrent) { try{ state.stopCurrent(); }catch(_e){} state.stopCurrent=null; }
+        return;
+      }
+      if (st === 'active') {
+        paintShare('client');
+        clientState && (clientState.textContent = 'Připojeno (ovládá tě hlavní telefon).');
+        setMsg('Připojeno.', 'ok');
+        if (!state.stopCurrent) state.stopCurrent = listenCurrent(code);
+        return;
+      }
+      if (st === 'rejected') {
+        paintShare('paused');
+        clientState && (clientState.textContent = 'Host tě odmítl.');
+        setMsg('Host tě odmítl.', 'err');
+        if (state.stopCurrent) { try{ state.stopCurrent(); }catch(_e){} state.stopCurrent=null; }
+        return;
+      }
+    } else {
+      hostPanel && (hostPanel.style.display='');
+      clientPanel && (clientPanel.style.display='none');
+      paintShare('host');
+    }
+  };
+  onValue(m, cb);
+  return ()=> off(m, 'value', cb);
+}
+
+const LAST_APPLIED_TS_KEY = 'zpjevnicek_share_lastAppliedTs_v1';
+function getLastAppliedTs(){
+  const v = sessionStorage.getItem(LAST_APPLIED_TS_KEY);
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+function setLastAppliedTs(ts){
+  sessionStorage.setItem(LAST_APPLIED_TS_KEY, String(ts || 0));
+}
+
+function listenCurrent(code){
+  const c = currentRef(code);
+  const cb = (snap)=>{
+    const cur = snap.val();
+    if (!cur || !cur.path) return;
+
+    const want = cur.path;
+    const ts = (typeof cur.ts === 'number') ? cur.ts : 0;
+
+    // Reaguj jen na novou změnu od hosta.
+    const last = getLastAppliedTs();
+    if (ts && ts <= last) return;
+    if (ts) setLastAppliedTs(ts);
+
+    const here = location.pathname + location.search;
+    // Nepřidávej do historie další písně – aby HW "Zpět" i "Zpět na seznam" neprocházely minulými písněmi.
+    if (want !== here) location.replace(want);
+  };
+  onValue(c, cb);
+  return ()=> off(c, 'value', cb);
+}
+
+function renderMembersList(code, membersObj){
+  if (!hostMembers) return;
+  const entries = Object.entries(membersObj || {})
+    .map(([id, v]) => [id, v || {}]);
+
+  hostMembers.innerHTML = '';
+  for (const [id, m] of entries) {
+    const li = document.createElement('li');
+    li.style.display='flex';
+    li.style.alignItems='center';
+    li.style.justifyContent='space-between';
+    li.style.gap='10px';
+    li.style.padding='8px 0';
+    li.style.borderBottom='1px solid rgba(255,255,255,0.08)';
+
+    const left = document.createElement('div');
+    left.style.display='grid';
+    left.style.gap='2px';
+    const nick = document.createElement('div');
+    nick.style.fontWeight='600';
+    nick.textContent = m.nick || id;
+    const meta = document.createElement('div');
+    meta.style.opacity='0.8';
+    meta.style.fontSize='0.9em';
+    meta.textContent = `${m.status||'?'}${m.role==='host' ? ' (host)' : ''}`;
+    left.appendChild(nick); left.appendChild(meta);
+
+    const right = document.createElement('div');
+    right.style.display='flex';
+    right.style.gap='8px';
+    right.style.flexWrap='wrap';
+
+    if (m.role !== 'host') {
+      if ((m.status||'pending') === 'pending') {
+        const bOk = document.createElement('button');
+        bOk.textContent = 'Přijmout';
+        bOk.onclick = async ()=>{
+          try { await update(memberRef(code, id), { status:'active', approvedAt: serverTimestamp() }); }
+          catch(e){ console.warn('approve failed', e); setMsg('Nepodařilo se přijmout.', 'err'); }
+        };
+        const bNo = document.createElement('button');
+        bNo.textContent = 'Odmítnout';
+        bNo.onclick = async ()=>{
+          try {
+            await update(memberRef(code, id), { status:'rejected', rejectedAt: serverTimestamp() });
+            await remove(memberRef(code, id));
+          } catch(e){ console.warn('reject failed', e); setMsg('Nepodařilo se odmítnout.', 'err'); }
+        };
+        right.appendChild(bOk); right.appendChild(bNo);
+      } else {
+        const bKick = document.createElement('button');
+        bKick.textContent = 'Odpojit';
+        bKick.onclick = async ()=>{
+          try { await remove(memberRef(code, id)); }
+          catch(e){ console.warn('kick failed', e); setMsg('Nepodařilo se odpojit.', 'err'); }
+        };
+        right.appendChild(bKick);
+      }
+    }
+
+    li.appendChild(left);
+    li.appendChild(right);
+    hostMembers.appendChild(li);
+  }
+}
+
+function listenMembersForHost(code){
+  const m = membersRef(code);
+  const cb = (snap)=> renderMembersList(code, snap.val() || {});
+  onValue(m, cb);
+  return ()=> off(m, 'value', cb);
+}
+
+async function ensureRoomAndJoin(code, nick){
+  if (!db) throw new Error('NO_DB');
+  const cid = getClientId();
+  state.clientId = cid;
+
+  // 1) načti room
+  const rSnap = await get(roomRef(code));
+
+  // 2) room neexistuje -> vytvoř host
+  if (!rSnap.exists()){
+    state.isHost = true;
+    await set(roomRef(code), {
+      hostId: cid,
+      createdAt: serverTimestamp(),
+      current: { path: broadcastPath(code), ts: serverTimestamp() },
+      members: {
+        [cid]: { nick, role:'host', status:'active', online:true, joinedAt: serverTimestamp(), lastSeen: serverTimestamp() }
+      }
+    });
+
+    state.code = code;
+    state.nick = nick;
+    state.attached = true;
+    saveSession(code, nick);
+    ensureShareParamInUrl(code);
+
+    state.stopRoom = listenRoomClosed(code);
+    state.stopMe   = listenMe(code, cid);
+    state.stopMembers = listenMembersForHost(code);
+    return;
+  }
+
+  // 3) room existuje
+  const room = rSnap.val() || {};
+  const hostId = room.hostId || null;
+
+  // Pokud room nemá hostId, vezmeme si ho (první kdo přijde)
+  if (!hostId){
+    state.isHost = true;
+    await update(roomRef(code), {
+      hostId: cid,
+      current: { path: broadcastPath(code), ts: serverTimestamp() }
+    });
+    await update(memberRef(code, cid), { nick, role:'host', status:'active', online:true, joinedAt: serverTimestamp(), lastSeen: serverTimestamp() });
+  } else if (hostId === cid){
+    // Já jsem host (už dříve)
+    state.isHost = true;
+    await update(memberRef(code, cid), { nick, role:'host', status:'active', lastSeen: serverTimestamp() });
+    await update(currentRef(code), { path: broadcastPath(code), ts: serverTimestamp() });
+  } else {
+    // Jsem klient
+    state.isHost = false;
+    const meRef = memberRef(code, cid);
+    const meSnap = await get(meRef);
+    const prev = meSnap.exists() ? (meSnap.val() || {}) : null;
+
+    // Sticky approval: pokud už jsem active, NESHODÍM se zpět do pending
+    if (prev && prev.status === 'active'){
+      await update(meRef, { nick, role:'client', online:true, lastSeen: serverTimestamp() });
+    } else {
+      // nový nebo nebyl active -> požádej o schválení
+      const payload = { nick, role:'client', status:'pending', online:true, joinedAt: serverTimestamp(), lastSeen: serverTimestamp() };
+      if (meSnap.exists()) await update(meRef, payload);
+      else await set(meRef, payload);
+    }
+  }
+
+  state.code = code;
+  state.nick = nick;
+  state.attached = true;
+  saveSession(code, nick);
+
+  // onDisconnect úklid (v no-auth režimu to může být best-effort)
+  try { onDisconnect(memberRef(code, cid)).update({ online:false, lastSeen: serverTimestamp() }); } catch(_e){}
+
+  state.stopRoom = listenRoomClosed(code);
+  state.stopMe   = listenMe(code, cid);
+  if (state.isHost) state.stopMembers = listenMembersForHost(code);
+}
+
+async function broadcastCurrentIfHost(){
+  if (!db || !state.attached || !state.isHost || !state.code) return;
+  try { await update(currentRef(state.code), { path: broadcastPath(state.code), ts: serverTimestamp() }); }
+  catch(e){ console.warn('broadcastCurrent failed', e); }
+}
+
+// ---- UI wiring ----
+btnShare?.addEventListener('click', ()=>{
+  if (!HAS_CONFIG) {
+    setMsg('Chybí FIREBASE_CONFIG (databaseURL).', 'err');
+    dlgShare?.showModal();
+    return;
+  }
+  dlgShare?.showModal();
+});
+dlgShareClose?.addEventListener('click', ()=> dlgShare?.close());
+
+shareJoin?.addEventListener('click', async ()=>{
+  try {
+    if (!HAS_CONFIG) { setMsg('Chybí FIREBASE_CONFIG (databaseURL).', 'err'); paintShare('err'); return; }
+    const code = normCode(shareCode?.value);
+    const nick = (shareNick?.value || '').trim() || 'Host';
+    if (!code) { setMsg('Zadej pět číslic (např. 12345).', 'warn'); return; }
+
+    if (state.attached) await detach(false);
+
+    setMsg('Připojuji…', 'info');
+    await ensureRoomAndJoin(code, nick);
+
+    setMsg(state.isHost ? 'Vytvořeno – jsi host.' : 'Požádáno o připojení.', state.isHost?'ok':'info');
+    paintShare(state.isHost ? 'host' : 'paused');
+  } catch(e){
+    console.error('shareJoin failed', e);
+    setMsg('Nepodařilo se připojit. Zkontroluj RTDB rules.', 'err');
+    paintShare('err');
+  }
+});
+
+hostStop?.addEventListener('click', async ()=>{
+  if (!state.attached || !state.isHost || !state.code) return;
+  await detach(true);
+  dlgShare?.close();
+});
+
+hostRefresh?.addEventListener('click', async ()=>{
+  if (!state.attached || !state.isHost || !state.code) return;
+  try {
+    const snap = await get(membersRef(state.code));
+    renderMembersList(state.code, snap.val() || {});
+  } catch(e){ console.warn('refresh failed', e); }
+});
+
+clientLeave?.addEventListener('click', async ()=>{
+  await detach(false);
+  dlgShare?.close();
+});
+
+// Host/listování
+window.addEventListener('popstate', ()=> broadcastCurrentIfHost());
+window.addEventListener('hashchange', ()=> broadcastCurrentIfHost());
+
+window.__shareDebug = { getState: ()=> ({...state}), broadcastCurrentIfHost };
+
+// Auto-rejoin (přežití mezi index.html ↔ song.html)
+window.addEventListener('DOMContentLoaded', async ()=>{
+  paintShare('off');
+  if (!HAS_CONFIG || !db) return;
+
+  const urlCode = getShareCodeFromUrl();
+  const s = loadSession();
+  if (!s && urlCode) {
+    // fallback, když storage nefunguje
+    try{ await ensureRoomAndJoin(urlCode, 'Klient'); paintShare('on'); }catch(_e){}
+    return;
+  }
+  if (!s || !s.code) return;
+
+  // Zkus tichý návrat do session
+  try{
+    state.attached = false;
+    setMsg('', 'info');
+    await ensureRoomAndJoin(normCode(s.code) || s.code, s.nick || 'Host');
+    paintShare(state.isHost ? 'host' : 'paused');
+    // host po načtení vždy pošle current
+    if (state.isHost) await broadcastCurrentIfHost();
+  } catch(e){
+    console.warn('auto-rejoin failed', e);
+    clearSession();
+  }
+});
+</script>
+
+
+
+  
+</body>
+</html>

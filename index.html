@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Zpěvník</title>
+
+<link rel="stylesheet" href="assets/style.css" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0f1729" />
+<link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Zpěvník" />
+
+<style>
+  /* Odsazení + šířka */
+  .container{ max-width:min(1200px,96vw); padding-left:2px; padding-right:2px; margin:0 auto; }
+
+  /* --- Vyrovnané mezery mezi písmeny v logu --- */
+  .logo{ display:flex; align-items:baseline; gap:0.03em; flex-wrap:nowrap; }
+  .logo span{ display:inline-block; letter-spacing:0; margin:0; padding:0; }
+  .háček{ display:inline-block; transform:translateY(0.5em); font-weight:1000; font-size:4em; }
+
+  /* Bez „bubliny“ kolem seznamu */
+  .card{ background:transparent!important; border:0!important; box-shadow:none!important; padding:0!important; margin:0!important; }
+  .card .sep{ display:none!important; }
+
+  /* Layout položek seznamu + ellipsy */
+  #list{ margin:0; padding:0; list-style:none; }
+  .item{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid #1f2b46; }
+  .item .meta{ display:flex; align-items:center; gap:10px; min-width:0; flex:1; }
+  .item .meta .badge:first-child{
+    width:38px; min-width:38px; height:38px; border-radius:999px;
+    display:inline-flex; align-items:center; justify-content:center; padding:0;
+    font-variant-numeric: tabular-nums;
+  }
+  .item .meta .title{ display:block; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item > .badge{ max-width:40%; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .controls{ margin:8px 0 10px; display:flex; gap:10px; flex-wrap:wrap; }
+  .controls input{ flex:1; min-width:220px; }
+
+  /* Views */
+  .view{ display:none; }
+  .view.active{ display:block; }
+
+  /* Playlist list */
+  #plList{ list-style:none; margin:0; padding:0; }
+  .pl-item{ display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid #1f2b46; gap:8px; }
+  .pl-item .name{ flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* Playlist detail */
+  #plDetailList{ list-style:none; margin:0; padding:0; }
+  .pl-song{ display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid #1f2b46; }
+  .pl-song .grip{ cursor:grab; user-select:none; }
+  .pl-song .title{ flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .fab{
+    position:fixed; right:16px; bottom:16px; width:56px; height:56px; border-radius:999px;
+    display:flex; align-items:center; justify-content:center; border:2px solid #2c3b60; background:transparent; color:var(--ink); z-index:5;
+  }
+  dialog{ border:1px solid #1f2b46; border-radius:12px; background:var(--card); color:var(--ink); }
+  dialog::backdrop{ background:rgba(0,0,0,.4); }
+</style>
+</head>
+<body>
+  <script>
+(function () {
+  const PASSWORD = ""; // volitelné: nastav heslo (jinak je zpěvník veřejný)
+  const KEY = "zpevnik_access_granted";
+
+  // Pokud není nastavené heslo, nic neblokuj
+  if (!PASSWORD) { return; }
+
+  // Zabraň zobrazení obsahu, dokud se nerozhodne
+  document.documentElement.style.display = "none";
+
+  function deny() {
+    document.documentElement.innerHTML = `
+      <head><title>Přístup odepřen</title></head>
+      <body style="font-family:sans-serif;text-align:center;padding:2rem">
+        <h2>Přístup odepřen</h2>
+        <p>Tento zpěvník je určen pouze pro uzavřenou skupinu.</p>
+      </body>`;
+    document.documentElement.style.display = "block";
+    throw new Error("Access denied");
+  }
+
+  // už jednou ověřený přístup
+  let __ok=false; try{ __ok = (localStorage.getItem(KEY) === "yes"); }catch(_e){ __ok=false; }
+  if (__ok) {
+    document.documentElement.style.display = "block";
+    return;
+  }
+
+  const entered = prompt("Zadej heslo pro přístup ke zpěvníčku:");
+
+  if (entered === null || entered !== PASSWORD) {
+    deny();
+  }
+
+  // správné heslo
+  try{ localStorage.setItem(KEY, "yes"); }catch(_e){}
+  document.documentElement.style.display = "block";
+})();
+</script>
+
+<div class="container">
+  <div class="header">
+    <div class="brand">
+      <h1 class="logo">
+        <span class="w">Z</span><span class="w">p</span><span class="gray">j</span>
+        <span class="e"><span class="gray">e</span><span class="w háček">ˇ</span></span>
+        <span class="w">v</span><span class="gray">níček</span>
+      </h1>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="controls">
+      <input id="q" placeholder="Hledat název / autor / číslo…" />
+      <select id="sort">
+        <option value="number">Řadit podle čísla</option>
+        <option value="title">Řadit podle abecedy</option>
+        <option value="author">Řadit podle autora</option>
+      </select>
+
+      <!-- NOVÉ: výběr zpěvníku (nativní select) -->
+      <select id="book">
+        <option value="">Všechno</option>
+      </select>
+
+      <button id="btnPlaylists">Playlisty</button>
+</div>
+
+    <!-- view: hlavní seznam -->
+    <div id="vMain" class="view active">
+      <ul id="list"></ul>
+      <div id="empty" class="empty" style="display:none">Zatím tu nic není. Nahraj soubory do složky <code>/songs</code>.</div>
+    </div>
+
+    <!-- view: seznam playlistů -->
+    <div id="vPl" class="view">
+      <div style="display:flex;align-items:center;gap:8px;margin:8px 0 10px">
+        <button id="backToMain">← Zpět na seznam</button>
+        <button id="btnImportPl">Importovat playlist (odkaz/JSON)</button>
+        <span style="flex:1"></span>
+        <button id="btnNewPl">+ Nový playlist</button>
+      </div>
+      <ul id="plList"></ul>
+    </div>
+
+    <!-- view: detail playlistu -->
+    <div id="vPlDetail" class="view">
+      <div style="display:flex;align-items:center;gap:8px;margin:8px 0 10px">
+        <button id="backToPlaylists">← Zpět na playlisty</button>
+        <strong id="plTitle" style="flex:1">Playlist</strong>
+        <button id="plShare">Sdílet playlist</button>
+      </div>
+      <ul id="plDetailList"></ul>
+      <button id="addToPl" class="fab" title="Přidat píseň">+</button>
+    </div>
+  </div>
+
+  <div class="footer">🎸 GitHub Pages · alphaTab</div>
+</div>
+
+<!-- Dialog přidání písně do playlistu -->
+<dialog id="dlgAdd">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">
+    <strong>Přidat píseň</strong>
+    <button id="dlgAddClose">Zavřít</button>
+  </div>
+  <input id="addQuery" placeholder="Název / autor / číslo…" style="width:100%;margin-bottom:8px" />
+  <ul id="addResults" style="list-style:none;margin:0;padding:0;max-height:50vh;overflow:auto"></ul>
+</dialog>
+
+<!-- Dialog pro SDÍLENÍ (host/připojit) -->
+<dialog id="dlgShare">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+    <strong id="shareTitle">Sdílení</strong>
+    <button id="dlgShareClose">Zavřít</button>
+  </div>
+
+  <div id="shareBody">
+    <div style="display:grid;gap:10px">
+      <label style="display:grid;gap:6px">Přezdívka
+        <input id="shareNick" placeholder="Třeba Jenda" autocomplete="nickname" />
+      </label>
+      <label style="display:grid;gap:6px">Pětičíselný kód
+        <input id="shareCode" inputmode="numeric" pattern="[0-9]*" placeholder="12345" maxlength="5" />
+      </label>
+      <button id="shareJoin" style="width:100%">Vytvořit / přihlásit</button>
+      <div id="shareMsg" class="badge" style="display:none"></div>
+    </div>
+
+    <hr class="sep" />
+
+    <div id="hostPanel" style="display:none">
+      <div class="badge" style="margin-bottom:8px">Jsi <strong>hlavní</strong>. Příchozí žádosti musíš potvrdit.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <button id="hostStop">Zrušit sdílení (odpojit všechny)</button>
+        <button id="hostRefresh">Obnovit seznam</button>
+      </div>
+      <div style="font-weight:600;margin:6px 0">Připojení</div>
+      <ul id="hostMembers" style="list-style:none;margin:0;padding:0;max-height:50vh;overflow:auto"></ul>
+    </div>
+
+    <div id="clientPanel" style="display:none">
+      <div id="clientState" class="badge" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="clientPause">Pauznout</button>
+        <button id="clientResume">Obnovit</button>
+        <button id="clientLeave">Odpojit se</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+/* ------- data + stav ------- */
+const list = document.getElementById('list');
+const q = document.getElementById('q');
+const sort = document.getElementById('sort');
+const bookSel = document.getElementById('book');
+const empty = document.getElementById('empty');
+const V_MAIN = document.getElementById('vMain');
+const V_PL = document.getElementById('vPl');
+const V_DETAIL = document.getElementById('vPlDetail');
+const HEADER = document.querySelector('.header');
+const CTRLS  = document.querySelector('.controls');
+
+
+let songs = [];
+let playlists = [];   // [{id, name, items:[songId,...]}]
+let CUR_PL = null;
+
+/* ------- utils ------- */
+function show(v){
+  for (const el of [V_MAIN, V_PL, V_DETAIL]) el.classList.remove('active');
+  v.classList.add('active');
+  // hlavička + ovladače jen na hlavní stránce
+  const onMain = (v === V_MAIN);
+  if (HEADER) HEADER.style.display = onMain ? '' : 'none';
+  if (CTRLS)  CTRLS.style.display  = onMain ? '' : 'none';
+}
+function savePlaylists(){ localStorage.setItem('zpj_playlists', JSON.stringify(playlists)); }
+function loadPlaylists(){ playlists = JSON.parse(localStorage.getItem('zpj_playlists')||'[]'); }
+function byId(id){ return songs.find(s=>s.id===id); }
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* ------- směrování podle hash ------- */
+function openPlaylistById(id){
+  CUR_PL = playlists.find(p=>p.id===id);
+  if(!CUR_PL){ location.hash = 'playlists'; return; }
+  renderPlaylistDetail();
+  show(V_DETAIL);
+}
+function handleHash(){
+  const h = (location.hash || '').slice(1);
+  if (h.startsWith('pl:')) { openPlaylistById(decodeURIComponent(h.slice(3))); return; }
+  if (h === 'playlists')   { show(V_PL); return; }
+  show(V_MAIN);
+}
+window.addEventListener('hashchange', handleHash);
+
+/* --- Import z hash #import=... --- */
+function b64encodeUtf8(str){ return btoa(unescape(encodeURIComponent(str))); }
+function b64decodeUtf8(b64){ return decodeURIComponent(escape(atob(b64))); }
+function tryImportFromHash(){
+  const h = (location.hash || '');
+  if (!h.startsWith('#import=')) return false;
+  const payload = h.slice(8);
+  try{
+    const json = b64decodeUtf8(decodeURIComponent(payload));
+    const data = JSON.parse(json);
+    if (!data || !data.id || !data.name || !Array.isArray(data.items)) throw 0;
+
+    if (confirm(`Importovat playlist „${data.name}“?`)) {
+      playlists = playlists.filter(p=>p.id!==data.id).concat([data]);
+      savePlaylists(); renderPlaylistList();
+      location.hash = 'pl:'+encodeURIComponent(data.id);
+      // hash s importem vyčisti (ať se neopakuje)
+      history.replaceState(null, '', location.pathname + location.search + location.hash);
+    }
+    return true;
+  }catch(e){
+    alert('Nelze načíst odkaz s playlistem.');
+    return false;
+  }
+}
+
+/* ------- načtení písní ------- */
+async function load(){
+  try{
+    const res = await fetch('./data/songs.json', { cache: 'no-store' });
+    songs = await res.json();
+
+
+  }catch(e){ songs = []; }
+  renderMain();
+  loadPlaylists();
+  renderPlaylistList();
+  buildBookSelect();          // naplň select se zpěvníky
+  // vždy po načtení nastav „Všechny“
+  if (bookSel) {
+    bookSel.value = '';
+    bookSel.addEventListener('change', renderMain);
+  }
+
+
+
+  // 1) import přes odkaz
+  if (tryImportFromHash()) return;
+
+  // 2) vyhodnoť hash (hlavní / playlists / pl:<id>)
+  handleHash();
+}
+
+/* ------- naplnění selectu „Zpěvníky“ ------- */
+function buildBookSelect(){
+  if (!bookSel) return;
+  const set = new Set();
+  songs.forEach(s => {
+    if (s && s.books && typeof s.books === 'object'){
+      Object.keys(s.books).forEach(name => set.add(name));
+    }
+  });
+  const options = [
+    `<option value="">Zpěvníky</option>`,
+    ...Array.from(set).sort((a,b)=>a.localeCompare(b, 'cs')).map(name =>
+      `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`
+    )
+  ];
+  bookSel.innerHTML = options.join('');
+}
+
+
+/* ------- hlavní seznam ------- */
+function renderMain(){
+  const term = q.value.trim().toLowerCase();
+  const srt  = sort.value;
+  const selectedBook = bookSel ? bookSel.value : '';
+
+  let data = songs.filter(s =>
+    s.title.toLowerCase().includes(term) ||
+    (s.author||'').toLowerCase().includes(term) ||
+    String(s.number||'').includes(term) ||
+    (selectedBook && s.books && String(s.books[selectedBook]||'').includes(term))
+  );
+
+  if (selectedBook){
+    data = data.filter(s => s.books && Object.prototype.hasOwnProperty.call(s.books, selectedBook));
+    data.sort((a,b)=>{
+      const an = a.books?.[selectedBook] ?? 1e9;
+      const bn = b.books?.[selectedBook] ?? 1e9;
+      if (an !== bn) return an - bn;
+      return (a.title).localeCompare(b.title);
+    });
+  } else {
+    data.sort((a,b)=>{
+      if(srt==='number') return (a.number??99999)-(b.number??99999) || a.title.localeCompare(b.title);
+      if(srt==='author') return (a.author||'').localeCompare(b.author||'') || a.title.localeCompare(b.title);
+      return a.title.localeCompare(b.title);
+    });
+  }
+
+  list.innerHTML = data.map(s => {
+      const badgeNum = selectedBook
+    ? (s.books?.[selectedBook] ?? '–')
+    : (s.number ?? '–');
+const href = selectedBook
+  ? `./song.html?id=${encodeURIComponent(s.id)}&book=${encodeURIComponent(selectedBook)}`
+  : `./song.html?id=${encodeURIComponent(s.id)}`;
+
+return `
+  <li class="item">
+    <div class="meta">
+      <span class="badge">${badgeNum}</span>
+      <a class="title" href="${href}">${s.title}</a>
+    </div>
+    <div class="badge">${s.author || ''}</div>
+  </li>`;
+
+  }).join('');
+
+
+
+  empty.style.display = data.length ? 'none' : 'block';
+}
+
+/* ------- playlisty – seznam ------- */
+function renderPlaylistList(){
+  const ul = document.getElementById('plList');
+  ul.innerHTML = playlists.map(p => `
+    <li class="pl-item">
+      <a class="name" data-open="${p.id}" href="#">${p.name}</a>
+      <button data-del="${p.id}" title="Smazat">🗑</button>
+    </li>
+  `).join('');
+
+  ul.querySelectorAll('[data-open]').forEach(a=>{
+    a.addEventListener('click', (e)=>{ e.preventDefault(); location.hash = 'pl:'+encodeURIComponent(a.dataset.open); });
+  });
+  ul.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const id=btn.dataset.del;
+      if(!confirm('Smazat playlist?')) return;
+      playlists = playlists.filter(p=>p.id!==id);
+      savePlaylists(); renderPlaylistList();
+    });
+  });
+}
+
+/* ------- playlist – detail ------- */
+function renderPlaylistDetail(){
+  document.getElementById('plTitle').textContent = CUR_PL?.name || 'Playlist';
+  const ul = document.getElementById('plDetailList');
+
+  ul.innerHTML = (CUR_PL?.items || []).map((sid, idx) => {
+    const s = byId(sid) || { title: '(chybí)', author: '', number: '–' };
+    return `<li class="pl-song" draggable="true" data-idx="${idx}">
+      <span class="grip">≡</span>
+      <a class="title" href="./song.html?id=${encodeURIComponent(sid)}&pl=${encodeURIComponent(CUR_PL.id)}">${s.number ?? '–'} · ${s.title}</a>
+      <small>${s.author || ''}</small>
+      <button data-rm="${idx}" title="Odebrat">✖</button>
+    </li>`;
+  }).join('');
+
+  // drag & drop pořadí
+  let dragIdx = -1;
+  ul.querySelectorAll('.pl-song').forEach(li => {
+    li.addEventListener('dragstart', () => { dragIdx = +li.dataset.idx; li.classList.add('drag'); });
+    li.addEventListener('dragend',   () => { li.classList.remove('drag'); });
+    li.addEventListener('dragover',  (e) => e.preventDefault());
+    li.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const to = +li.dataset.idx;
+      if (dragIdx === to) return;
+      const x = CUR_PL.items.splice(dragIdx, 1)[0];
+      CUR_PL.items.splice(to, 0, x);
+      savePlaylists(); renderPlaylistDetail();
+    });
+  });
+
+  // odebrat píseň z playlistu
+  ul.querySelectorAll('[data-rm]').forEach(btn => {
+    btn.onclick = () => {
+      const i = +btn.dataset.rm;
+      CUR_PL.items.splice(i, 1);
+      savePlaylists(); renderPlaylistDetail();
+    };
+  });
+
+  // share button handler
+  document.getElementById('plShare').onclick = ()=> sharePlaylistLink(CUR_PL.id);
+}
+
+/* ------- nový playlist ------- */
+document.getElementById('btnNewPl').onclick = ()=>{
+  const name = prompt('Název playlistu:');
+  if(!name) return;
+  const id = 'pl_' + Math.random().toString(36).slice(2,9);
+  playlists.push({ id, name, items: [] });
+  savePlaylists(); renderPlaylistList();
+  location.hash = 'pl:'+encodeURIComponent(id);
+};
+
+/* ------- Přidat píseň do playlistu ------- */
+const dlgAdd = document.getElementById('dlgAdd');
+document.getElementById('addToPl').onclick = ()=>{ if(!CUR_PL) return; dlgAdd.showModal(); renderAddResults(''); document.getElementById('addQuery').value=''; document.getElementById('addQuery').focus(); };
+document.getElementById('dlgAddClose').onclick = ()=> dlgAdd.close();
+document.getElementById('addQuery').addEventListener('input', e=> renderAddResults(e.target.value));
+
+function renderAddResults(term){
+  term = (term || '').toLowerCase();
+  const ul = document.getElementById('addResults');
+  const data = songs.filter(s =>
+    s.title.toLowerCase().includes(term) ||
+    (s.author || '').toLowerCase().includes(term) ||
+    String(s.number || '').includes(term)
+  ).slice(0, 50);
+
+  ul.innerHTML = data.map(s => {
+    const already = (CUR_PL?.items || []).includes(s.id);
+    return `<li style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #1f2b46">
+      <span class="badge" style="width:38px;height:38px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center">${s.number ?? '–'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.title}</div>
+        <small>${s.author || ''}</small>
+      </div>
+      <button data-add="${s.id}" ${already ? 'disabled' : ''}>${already ? 'Přidáno' : 'Přidat'}</button>
+    </li>`;
+  }).join('');
+
+  ul.querySelectorAll('[data-add]').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.add;
+      if (!CUR_PL) return;
+      if (!CUR_PL.items.includes(id)) {
+        CUR_PL.items.push(id);
+        savePlaylists();
+        renderPlaylistDetail();
+      }
+      btn.textContent = 'Přidáno';
+      btn.disabled = true;
+      document.getElementById('addQuery')?.focus();
+    };
+  });
+}
+
+/* ------- Sdílení playlistu přes ODKAZ ------- */
+async function sharePlaylistLink(id){
+  const pl = playlists.find(p=>p.id===id); if(!pl) return;
+  const payload = b64encodeUtf8(JSON.stringify(pl));
+    const base = new URL('./', location.href);
+  base.hash = `import=${encodeURIComponent(payload)}`;
+  const url = base.href;
+
+  try{
+    if (navigator.share && /https?:/.test(location.protocol)) {
+      await navigator.share({ title: `Playlist: ${pl.name}`, text: `Otevři ve Zpěvníku:`, url });
+      return;
+    }
+  }catch(_){}
+
+  try{
+    await navigator.clipboard.writeText(url);
+    alert('Odkaz na playlist byl zkopírován do schránky.');
+  }catch(e){
+    prompt('Zkopíruj odkaz na playlist:', url);
+  }
+}
+
+/* ------- Import playlistu (odkaz/JSON) ------- */
+document.getElementById('btnImportPl').onclick = async ()=>{
+  if (tryImportFromHash()) return;
+  const raw = prompt('Vlož odkaz (#import=...) nebo JSON playlistu:');
+  if(!raw) return;
+
+  if (raw.includes('#import=')) { location.href = raw; return; }
+
+  try{
+    const data = JSON.parse(raw);
+    if (!data || !data.id) throw 0;
+    playlists = playlists.filter(p=>p.id!==data.id).concat([data]);
+    savePlaylists(); renderPlaylistList();
+    location.hash = 'pl:'+encodeURIComponent(data.id);
+  }catch(_){
+    alert('Neplatný obsah. Vlož funkční odkaz nebo JSON playlistu.');
+  }
+};
+
+/* ------- navigace mezi views ------- */
+document.getElementById('btnPlaylists').onclick = ()=>{ location.hash='playlists'; };
+document.getElementById('backToMain').onclick = ()=> history.back();        // seznam playlistů -> hlavní
+document.getElementById('backToPlaylists').onclick = ()=> history.back();   // detail -> seznam playlistů
+
+/* ------- filtry ------- */
+q.addEventListener('input', renderMain);
+sort.addEventListener('change', renderMain);
+
+/* ------- SW + auto-update ------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      reg.addEventListener('updatefound', () => {
+        const sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener('statechange', () => {
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+            sw.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return; refreshing = true; window.location.reload();
+      });
+      setInterval(() => reg.update().catch(()=>{}), 60*60*1000);
+    } catch (e) { console.error(e); }
+  });
+}
+
+/* ------- Prefetch písní při dobrém připojení ------- */
+function goodConnection(){
+  const c = navigator.connection || navigator.webkitConnection || navigator.mozConnection;
+  if (!c) return true;
+  if (c.saveData) return false;
+  const ok = ['wifi','ethernet','unknown'];
+  return ok.includes(c.type) || (c.effectiveType||'').includes('4g');
+}
+async function prefetchAllSongs(){
+  if (!navigator.onLine) return;
+  if (!goodConnection()) return;
+  try{
+    const reg = await navigator.serviceWorker.getRegistration('./');
+    if (reg && reg.active) reg.active.postMessage({ type: 'CACHE_ALL_SONGS', chunkSize: 6, reportProgress: false });
+  }catch(e){}
+}
+window.addEventListener('load', prefetchAllSongs);
+setInterval(prefetchAllSongs, 30*60*1000);
+
+/* ------- globální scale pro song.html ------- */
+const ZPJ_FONT_KEY = 'zpj-fontScale';
+(function applyGlobalSongScale(){
+  const val = parseFloat(localStorage.getItem(ZPJ_FONT_KEY));
+  if (!isNaN(val) && val > 0) {
+    document.documentElement.style.setProperty('--song-scale', String(val));
+  }
+})();
+load();
+</script>
+
+<!-- ======================== SDÍLENÍ OVÁDÁNÍ (Firebase) ========================
+  Pozn.: Doplň si FIREBASE_CONFIG níže (z Firebase Console → Project settings → Web app).
+  Bez toho bude tlačítko „Sdílení“ fungovat jen jako UI (a zobrazí chybu).
+============================================================================= -->
+<script type="text/plain" data-disabled="share-index">
+// ======================== SDÍLENÍ OVLÁDÁNÍ (Firebase RTDB, bez Auth) ========================
+// Pravidla: rooms/$code { .read: true, .write: true }
+// - clientId je lokální (localStorage) -> members/<clientId>
+// - hostId je uložen v rooms/<code>/hostId
+// - host schvaluje členy změnou members/<id>/status z 'pending' -> 'active'
+// - host zapisuje rooms/<code>/current.path = location.pathname + location.search
+// - klienti poslouchají current.path a přesměrují se
+// ===========================================================================================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+import {
+  getDatabase, ref, set, update, onValue, onDisconnect, off, get, remove, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.13.1/firebase-database.js";
+
+const FIREBASE_CONFIG = window.FIREBASE_CONFIG || window.__FIREBASE_CONFIG || {
+  apiKey: 
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  databaseURL: "https://YOUR_DB.firebaseio.com",
+  storageBucket: "YOUR_BUCKET",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
+  measurementId: "YOUR_MEASUREMENT_ID"
+};
+
+const HAS_CONFIG = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.databaseURL);
+
+const app = HAS_CONFIG ? initializeApp(FIREBASE_CONFIG) : null;
+const db  = app ? getDatabase(app) : null;
+
+// --- UI prvky ---
+const btnShare      = document.getElementById('btnShare');
+const dlgShare      = document.getElementById('dlgShare');
+const dlgShareClose = document.getElementById('dlgShareClose');
+const shareNick     = document.getElementById('shareNick');
+const shareCode     = document.getElementById('shareCode');
+const shareJoin     = document.getElementById('shareJoin');
+const shareMsg      = document.getElementById('shareMsg');
+
+const hostPanel     = document.getElementById('hostPanel');
+const hostMembers   = document.getElementById('hostMembers');
+const hostStop      = document.getElementById('hostStop');
+const hostRefresh   = document.getElementById('hostRefresh');
+
+const clientPanel   = document.getElementById('clientPanel');
+const clientState   = document.getElementById('clientState');
+const clientLeave   = document.getElementById('clientLeave');
+
+// --- Persist keys ---
+const CLIENT_KEY  = 'zpjevnicek_share_clientId_v1';
+const SESSION_KEY = 'zpjevnicek_share_session_v1'; // { code, nick }
+
+// --- Stav ---
+let state = {
+  code: null,
+  nick: null,
+  clientId: null,
+  isHost: false,
+  meStatus: 'off',
+  stopMe: null,
+  stopMembers: null,
+  stopCurrent: null,
+  stopRoom: null,
+  attached: false,
+};
+
+
+// --- Safe storage (localStorage může být blokované – použij fallback přes window.name) ---
+function _safeParseName(){
+  try{ return window.name ? JSON.parse(window.name) : {}; }catch(_e){ return {}; }
+}
+function _safeWriteName(obj){
+  try{ window.name = JSON.stringify(obj||{}); }catch(_e){}
+}
+function sGet(key){
+  try{ const v = localStorage.getItem(key); if (v !== null) return v; }catch(_e){}
+  const obj = _safeParseName();
+  return (obj && Object.prototype.hasOwnProperty.call(obj,key)) ? obj[key] : null;
+}
+function sSet(key, val){
+  try{ localStorage.setItem(key, val); return; }catch(_e){}
+  const obj = _safeParseName();
+  obj[key] = val;
+  _safeWriteName(obj);
+}
+function sDel(key){
+  try{ localStorage.removeItem(key); }catch(_e){}
+  const obj = _safeParseName();
+  if (obj && Object.prototype.hasOwnProperty.call(obj,key)) delete obj[key];
+  _safeWriteName(obj);
+}
+function getShareCodeFromUrl(){
+  try{
+    const u = new URL(location.href);
+    const c = (u.searchParams.get('share')||'').trim();
+    return (/^\d{5}$/.test(c)) ? c : null;
+  }catch(_e){ return null; }
+}
+function ensureShareParamInUrl(code){
+  try{
+    const u = new URL(location.href);
+    if (u.searchParams.get('share') !== code){
+      u.searchParams.set('share', code);
+      history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString() + u.hash);
+    }
+  }catch(_e){}
+}
+function broadcastPath(code){
+  const u = new URL(location.href);
+  u.searchParams.set('share', code);
+  return u.pathname + '?' + u.searchParams.toString(); // bez hash, držíme se původního formátu
+}
+
+function getClientId(){
+  let id = sGet(CLIENT_KEY);
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(16).slice(2) + Date.now().toString(16)))
+      .replace(/-/g,'').slice(0,16);
+    sSet(CLIENT_KEY, id);
+  }
+  return id;
+}
+
+function saveSession(code, nick){
+  try{ sSet(SESSION_KEY, JSON.stringify({ code, nick })); }catch(_e){}
+}
+function loadSession(){
+  try{
+    const raw = sGet(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(_e){ return null; }
+}
+function clearSession(){
+  try{ sDel(SESSION_KEY); }catch(_e){}
+}
+
+function normCode(v){
+  const s = (v||'').toString().trim();
+  if (!/^\d{5}$/.test(s)) return null;
+  return s;
+}
+
+function setMsg(text, type='info'){
+  if (!shareMsg) return;
+  shareMsg.style.display = text ? '' : 'none';
+  shareMsg.textContent = text || '';
+  const map = {
+    info: '#1f2937',
+    ok:   '#14532d',
+    warn: '#7c2d12',
+    err:  '#7f1d1d'
+  };
+  shareMsg.style.background = map[type] || map.info;
+}
+
+function paintShare(mode){
+  if (!btnShare) return;
+  const bg = {
+    off:    '',
+    host:   '#123b1f',
+    client: '#1b2a56',
+    paused: '#7c2d12',
+    err:    '#7f1d1d'
+  }[mode] || '';
+  btnShare.style.background = bg;
+  btnShare.style.opacity = bg ? '1' : '';
+}
+
+function roomRef(code){ return ref(db, `rooms/${code}`); }
+function currentRef(code){ return ref(db, `rooms/${code}/current`); }
+function membersRef(code){ return ref(db, `rooms/${code}/members`); }
+function memberRef(code, clientId){ return ref(db, `rooms/${code}/members/${clientId}`); }
+
+function stopAllListeners(){
+  for (const k of ['stopMe','stopMembers','stopCurrent','stopRoom']) {
+    if (state[k]) { try{ state[k](); }catch(_e){} state[k]=null; }
+  }
+}
+
+async function detach(alsoRemoveRoom=false){
+  if (!db || !state.attached || !state.code) {
+    stopAllListeners();
+    state = {...state, code:null, isHost:false, attached:false, meStatus:'off'};
+    hostPanel && (hostPanel.style.display='none');
+    clientPanel && (clientPanel.style.display='none');
+    paintShare('off');
+    clearSession();
+    return;
+  }
+  const code = state.code;
+  const cid  = state.clientId;
+
+  stopAllListeners();
+
+  try { await remove(memberRef(code, cid)); } catch(_e){}
+
+  if (alsoRemoveRoom && state.isHost) {
+    try { await remove(roomRef(code)); } catch(_e){}
+  }
+
+  state = {...state, code:null, isHost:false, attached:false, meStatus:'off'};
+  hostPanel && (hostPanel.style.display='none');
+  clientPanel && (clientPanel.style.display='none');
+  paintShare('off');
+  setMsg('', 'info');
+  clearSession();
+}
+
+function listenRoomClosed(code){
+  const r = roomRef(code);
+  const cb = (snap)=>{
+    if (!snap.exists()) {
+      paintShare('paused');
+      setMsg('Místnost byla zrušena.', 'warn');
+      clientState && (clientState.textContent = 'Místnost byla zrušena.');
+      detach(false);
+    }
+  };
+  onValue(r, cb);
+  return ()=> off(r, 'value', cb);
+}
+
+function listenMe(code, cid){
+  const m = memberRef(code, cid);
+  const cb = (snap)=>{
+    if (!snap.exists()) {
+      paintShare('paused');
+      clientState && (clientState.textContent = 'Odpojeno.');
+      setMsg('Byl jsi odpojen (nebo odmítnut).', 'warn');
+      clientPanel && (clientPanel.style.display='');
+      hostPanel && (hostPanel.style.display='none');
+      state.meStatus = 'paused';
+      return;
+    }
+    const me = snap.val() || {};
+    const st = me.status || 'pending';
+    state.meStatus = st;
+
+    if (!state.isHost) {
+      clientPanel && (clientPanel.style.display='');
+      hostPanel && (hostPanel.style.display='none');
+
+      if (st === 'pending') {
+        paintShare('paused');
+        clientState && (clientState.textContent = 'Čekám na potvrzení od hlavního telefonu…');
+        setMsg('Čeká se na potvrzení hosta.', 'info');
+        if (state.stopCurrent) { try{ state.stopCurrent(); }catch(_e){} state.stopCurrent=null; }
+        return;
+      }
+      if (st === 'active') {
+        paintShare('client');
+        clientState && (clientState.textContent = 'Připojeno (ovládá tě hlavní telefon).');
+        setMsg('Připojeno.', 'ok');
+        if (!state.stopCurrent) state.stopCurrent = listenCurrent(code);
+        return;
+      }
+      if (st === 'rejected') {
+        paintShare('paused');
+        clientState && (clientState.textContent = 'Host tě odmítl.');
+        setMsg('Host tě odmítl.', 'err');
+        if (state.stopCurrent) { try{ state.stopCurrent(); }catch(_e){} state.stopCurrent=null; }
+        return;
+      }
+    } else {
+      hostPanel && (hostPanel.style.display='');
+      clientPanel && (clientPanel.style.display='none');
+      paintShare('host');
+    }
+  };
+  onValue(m, cb);
+  return ()=> off(m, 'value', cb);
+}
+
+function listenCurrent(code){
+  const c = currentRef(code);
+  const cb = (snap)=>{
+    const cur = snap.val();
+    if (!cur || !cur.path) return;
+    const want = cur.path;
+    const here = location.pathname + location.search;
+    if (want !== here) location.assign(want);
+  };
+  onValue(c, cb);
+  return ()=> off(c, 'value', cb);
+}
+
+function renderMembersList(code, membersObj){
+  if (!hostMembers) return;
+  const entries = Object.entries(membersObj || {})
+    .map(([id, v]) => [id, v || {}]);
+
+  hostMembers.innerHTML = '';
+  for (const [id, m] of entries) {
+    const li = document.createElement('li');
+    li.style.display='flex';
+    li.style.alignItems='center';
+    li.style.justifyContent='space-between';
+    li.style.gap='10px';
+    li.style.padding='8px 0';
+    li.style.borderBottom='1px solid rgba(255,255,255,0.08)';
+
+    const left = document.createElement('div');
+    left.style.display='grid';
+    left.style.gap='2px';
+    const nick = document.createElement('div');
+    nick.style.fontWeight='600';
+    nick.textContent = m.nick || id;
+    const meta = document.createElement('div');
+    meta.style.opacity='0.8';
+    meta.style.fontSize='0.9em';
+    meta.textContent = `${m.status||'?'}${m.role==='host' ? ' (host)' : ''}`;
+    left.appendChild(nick); left.appendChild(meta);
+
+    const right = document.createElement('div');
+    right.style.display='flex';
+    right.style.gap='8px';
+    right.style.flexWrap='wrap';
+
+    if (m.role !== 'host') {
+      if ((m.status||'pending') === 'pending') {
+        const bOk = document.createElement('button');
+        bOk.textContent = 'Přijmout';
+        bOk.onclick = async ()=>{
+          try { await update(memberRef(code, id), { status:'active', approvedAt: serverTimestamp() }); }
+          catch(e){ console.warn('approve failed', e); setMsg('Nepodařilo se přijmout.', 'err'); }
+        };
+        const bNo = document.createElement('button');
+        bNo.textContent = 'Odmítnout';
+        bNo.onclick = async ()=>{
+          try {
+            await update(memberRef(code, id), { status:'rejected', rejectedAt: serverTimestamp() });
+            await remove(memberRef(code, id));
+          } catch(e){ console.warn('reject failed', e); setMsg('Nepodařilo se odmítnout.', 'err'); }
+        };
+        right.appendChild(bOk); right.appendChild(bNo);
+      } else {
+        const bKick = document.createElement('button');
+        bKick.textContent = 'Odpojit';
+        bKick.onclick = async ()=>{
+          try { await remove(memberRef(code, id)); }
+          catch(e){ console.warn('kick failed', e); setMsg('Nepodařilo se odpojit.', 'err'); }
+        };
+        right.appendChild(bKick);
+      }
+    }
+
+    li.appendChild(left);
+    li.appendChild(right);
+    hostMembers.appendChild(li);
+  }
+}
+
+function listenMembersForHost(code){
+  const m = membersRef(code);
+  const cb = (snap)=> renderMembersList(code, snap.val() || {});
+  onValue(m, cb);
+  return ()=> off(m, 'value', cb);
+}
+
+async function ensureRoomAndJoin(code, nick){
+  if (!db) throw new Error('NO_DB');
+  const cid = getClientId();
+  state.clientId = cid;
+
+  // 1) načti room
+  const rSnap = await get(roomRef(code));
+
+  // 2) room neexistuje -> vytvoř host
+  if (!rSnap.exists()){
+    state.isHost = true;
+    await set(roomRef(code), {
+      hostId: cid,
+      createdAt: serverTimestamp(),
+      current: { path: broadcastPath(code), ts: serverTimestamp() },
+      members: {
+        [cid]: { nick, role:'host', status:'active', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() }
+      }
+    });
+
+    state.code = code;
+    state.nick = nick;
+    state.attached = true;
+    saveSession(code, nick);
+    ensureShareParamInUrl(code);
+
+    state.stopRoom = listenRoomClosed(code);
+    state.stopMe   = listenMe(code, cid);
+    state.stopMembers = listenMembersForHost(code);
+    return;
+  }
+
+  // 3) room existuje
+  const room = rSnap.val() || {};
+  const hostId = room.hostId || null;
+
+  // Pokud room nemá hostId, vezmeme si ho (první kdo přijde)
+  if (!hostId){
+    state.isHost = true;
+    await update(roomRef(code), {
+      hostId: cid,
+      current: { path: broadcastPath(code), ts: serverTimestamp() }
+    });
+    await update(memberRef(code, cid), { nick, role:'host', status:'active', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() });
+  } else if (hostId === cid){
+    // Já jsem host (už dříve)
+    state.isHost = true;
+    await update(memberRef(code, cid), { nick, role:'host', status:'active', lastSeen: serverTimestamp() });
+    await update(currentRef(code), { path: broadcastPath(code), ts: serverTimestamp() });
+  } else {
+    // Jsem klient
+    state.isHost = false;
+    const meRef = memberRef(code, cid);
+    const meSnap = await get(meRef);
+    const prev = meSnap.exists() ? (meSnap.val() || {}) : null;
+
+    // Sticky approval: pokud už jsem active, NESHODÍM se zpět do pending
+    if (prev && prev.status === 'active'){
+      await update(meRef, { nick, role:'client', lastSeen: serverTimestamp() });
+    } else {
+      // nový nebo nebyl active -> požádej o schválení
+      const payload = { nick, role:'client', status:'pending', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() };
+      if (meSnap.exists()) await update(meRef, payload);
+      else await set(meRef, payload);
+    }
+  }
+
+  state.code = code;
+  state.nick = nick;
+  state.attached = true;
+  saveSession(code, nick);
+
+  // onDisconnect úklid (v no-auth režimu to může být best-effort)
+  try { onDisconnect(memberRef(code, cid)).remove(); } catch(_e){}
+
+  state.stopRoom = listenRoomClosed(code);
+  state.stopMe   = listenMe(code, cid);
+  if (state.isHost) state.stopMembers = listenMembersForHost(code);
+}
+
+async function broadcastCurrentIfHost(){
+  if (!db || !state.attached || !state.isHost || !state.code) return;
+  try { await update(currentRef(state.code), { path: broadcastPath(code), ts: serverTimestamp() }); }
+  catch(e){ console.warn('broadcastCurrent failed', e); }
+}
+
+// ---- UI wiring ----
+btnShare?.addEventListener('click', ()=>{
+  if (!HAS_CONFIG) {
+    setMsg('Chybí FIREBASE_CONFIG (databaseURL).', 'err');
+    dlgShare?.showModal();
+    return;
+  }
+  dlgShare?.showModal();
+});
+dlgShareClose?.addEventListener('click', ()=> dlgShare?.close());
+
+shareJoin?.addEventListener('click', async ()=>{
+  try {
+    if (!HAS_CONFIG) { setMsg('Chybí FIREBASE_CONFIG (databaseURL).', 'err'); paintShare('err'); return; }
+    const code = normCode(shareCode?.value);
+    const nick = (shareNick?.value || '').trim() || 'Host';
+    if (!code) { setMsg('Zadej pět číslic (např. 12345).', 'warn'); return; }
+
+    if (state.attached) await detach(false);
+
+    setMsg('Připojuji…', 'info');
+    await ensureRoomAndJoin(code, nick);
+
+    setMsg(state.isHost ? 'Vytvořeno – jsi host.' : 'Požádáno o připojení.', state.isHost?'ok':'info');
+    paintShare(state.isHost ? 'host' : 'paused');
+  } catch(e){
+    console.error('shareJoin failed', e);
+    setMsg('Nepodařilo se připojit. Zkontroluj RTDB rules.', 'err');
+    paintShare('err');
+  }
+});
+
+hostStop?.addEventListener('click', async ()=>{
+  if (!state.attached || !state.isHost || !state.code) return;
+  await detach(true);
+  dlgShare?.close();
+});
+
+hostRefresh?.addEventListener('click', async ()=>{
+  if (!state.attached || !state.isHost || !state.code) return;
+  try {
+    const snap = await get(membersRef(state.code));
+    renderMembersList(state.code, snap.val() || {});
+  } catch(e){ console.warn('refresh failed', e); }
+});
+
+clientLeave?.addEventListener('click', async ()=>{
+  await detach(false);
+  dlgShare?.close();
+});
+
+// Host/listování
+window.addEventListener('popstate', ()=> broadcastCurrentIfHost());
+window.addEventListener('hashchange', ()=> broadcastCurrentIfHost());
+
+window.__shareDebug = { getState: ()=> ({...state}), broadcastCurrentIfHost };
+
+// Auto-rejoin (přežití mezi index.html ↔ song.html)
+window.addEventListener('DOMContentLoaded', async ()=>{
+  paintShare('off');
+  if (!HAS_CONFIG || !db) return;
+
+  const urlCode = getShareCodeFromUrl();
+  const s = loadSession();
+  if (!s && urlCode) {
+    // fallback, když storage nefunguje
+    try{ await ensureRoomAndJoin(urlCode, 'Klient'); paintShare('on'); }catch(_e){}
+    return;
+  }
+  if (!s || !s.code) return;
+
+  // Zkus tichý návrat do session
+  try{
+    state.attached = false;
+    setMsg('', 'info');
+    await ensureRoomAndJoin(normCode(s.code) || s.code, s.nick || 'Host');
+    paintShare(state.isHost ? 'host' : 'paused');
+    // host po načtení vždy pošle current
+    if (state.isHost) await broadcastCurrentIfHost();
+  } catch(e){
+    console.warn('auto-rejoin failed', e);
+    clearSession();
+  }
+});
+</script>
+</body>
+</html>

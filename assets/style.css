@@ -1,0 +1,328 @@
+:root{
+  --bg:#0e1320; --card:#121a2a; --ink:#eaf1ff;
+  --muted:#9fb3d2; --accent:#7bb0ff; --line:#1f2a45;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:16px/1.6 system-ui, Segoe UI, Roboto, Arial}
+.container{max-width:960px;margin:auto;padding:28px 20px}
+
+/* ── HLAVIČKA ─────────────────────────────────────────── */
+.header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;   /* akce začínají nahoře */
+  gap:16px;
+  margin-bottom:24px;       /* větší mezera pod hlavičkou */
+}
+.header .brand{ display:flex; align-items:center; gap:10px; }
+.header .brand h1{ margin:0; font-size:24px; font-weight:700; letter-spacing:.2px; }
+.header-actions{
+  margin-left:auto;
+  display:flex; flex-direction:column; align-items:flex-end; gap:8px;
+}
+/* ── LOGO "Zpjěvníček" ───────────────────────────── */
+.logo {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  display: inline-block;
+  line-height: 1;
+}
+
+.logo .w { color: #fff; }        /* bílé písmo */
+.logo .gray { color: #9fa8b8; }  /* šedé písmo */
+
+/* háček přesně nad šedé e */
+.logo .e {
+  position: relative;
+  display: inline-block;
+}
+
+.logo .háček {
+  position: absolute;
+  left: 0.15em;
+  top: -0.4em;
+  font-size: 0.7em;
+  line-height: 1;
+}
+
+
+
+/* tlačítka */
+.btn{
+  background:#0e1a30; color:#9ec3ff;
+  border:1px solid #2a3b64; border-radius:10px;
+  padding:8px 12px; cursor:pointer;
+}
+.btn:hover{ background:#14223d; }
+.btn-ghost{
+  background:transparent; color:#c9d9f7;
+  border:1px dashed #2a3b64;
+}
+#offlineWrap input{ transform:translateY(1px); margin-right:6px; }
+
+/* ── OSTATNÍ ──────────────────────────────────────────── */
+.card{background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
+.controls{display:flex;gap:10px;flex-wrap:wrap}
+input,select,button{background:#0f1729;border:1px solid #24324a;border-radius:12px;color:var(--ink);padding:10px 12px}
+button{cursor:pointer}
+input:focus,select:focus,button:focus{outline:2px solid var(--accent);outline-offset:1px}
+ul{list-style:none}
+.item{display:flex;align-items:center;justify-content:space-between;padding:12px 8px;border-bottom:1px dashed var(--line)}
+.item:last-child{border-bottom:none}
+.title{font-weight:600}
+.badge{font-variant-numeric:tabular-nums;background:#17213a;border:1px solid #2c3b60;border-radius:999px;padding:3px 8px;color:var(--muted)}
+.meta{display:flex;gap:10px;align-items:center}
+.empty{color:var(--muted);padding:18px;text-align:center}
+.player{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+#alphaTab canvas,#alphaTab svg{max-width:none}
+.footer{color:var(--muted);font-size:13px;margin-top:16px}
+a{color:var(--accent);text-decoration:none}
+
+/* ── RESPONSIVE ───────────────────────────────────────── */
+@media (max-width:520px){
+  .header{ align-items:stretch; }
+  .header-actions{ align-items:flex-start; }
+}
+
+/* ===========================
+   Sdílení (button + modal)
+   Přidej na konec style.css
+   =========================== */
+
+:root{
+  --share-green:#16a34a;
+  --share-purple:#7c3aed;
+  --share-orange:#f59e0b;
+  --share-red:#ef4444;
+
+  --modal-bg: rgba(0,0,0,.55);
+  --panel-bg: #0f172a;
+  --panel-border: rgba(255,255,255,.12);
+  --panel-text: #e5e7eb;
+  --panel-muted: rgba(229,231,235,.75);
+}
+
+/* Tlačítko Sdílení – vzhled si můžeš sjednotit se svými tlačítky.
+   Přidává jen stavy barvy. */
+#shareBtn{
+  position: relative;
+}
+
+/* barvy stavu */
+#shareBtn.share-host{
+  outline: 2px solid var(--share-green);
+  box-shadow: 0 0 0 3px rgba(22,163,74,.20);
+}
+#shareBtn.share-client{
+  outline: 2px solid var(--share-purple);
+  box-shadow: 0 0 0 3px rgba(124,58,237,.20);
+}
+#shareBtn.share-paused{
+  outline: 2px solid var(--share-orange);
+  box-shadow: 0 0 0 3px rgba(245,158,11,.22);
+}
+
+/* malý puntík v rohu (volitelné) */
+#shareBtn::after{
+  content:"";
+  position:absolute;
+  right: -3px;
+  top: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: transparent;
+}
+#shareBtn.share-host::after{ background: var(--share-green); }
+#shareBtn.share-client::after{ background: var(--share-purple); }
+#shareBtn.share-paused::after{ background: var(--share-orange); }
+
+/* ===========================
+   Modal
+   =========================== */
+.share-modal{
+  position: fixed;
+  inset: 0;
+  background: var(--modal-bg);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.share-modal.open{
+  display: flex;
+}
+
+.share-panel{
+  width: min(560px, 96vw);
+  background: var(--panel-bg);
+  color: var(--panel-text);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(0,0,0,.45);
+  overflow: hidden;
+}
+
+.share-panel header{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.share-panel header h3{
+  margin:0;
+  font-size: 1.05rem;
+  letter-spacing: .2px;
+}
+
+.share-close{
+  appearance:none;
+  border:0;
+  background: transparent;
+  color: var(--panel-text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+.share-close:hover{
+  background: rgba(255,255,255,.06);
+}
+
+.share-body{
+  padding: 14px 16px 16px;
+}
+
+.share-row{
+  display:flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.share-field{
+  flex: 1 1 220px;
+  min-width: 200px;
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.share-field label{
+  font-size: .86rem;
+  color: var(--panel-muted);
+}
+
+.share-field input{
+  width: 100%;
+  padding: 10px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.04);
+  color: var(--panel-text);
+  outline: none;
+}
+
+.share-field input:focus{
+  border-color: rgba(96,165,250,.55);
+  box-shadow: 0 0 0 3px rgba(96,165,250,.18);
+}
+
+.share-actions{
+  display:flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.share-btn{
+  appearance:none;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.06);
+  color: var(--panel-text);
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.share-btn:hover{ background: rgba(255,255,255,.10); }
+
+.share-btn.primary{
+  border-color: rgba(96,165,250,.45);
+  background: rgba(96,165,250,.18);
+}
+.share-btn.danger{
+  border-color: rgba(239,68,68,.55);
+  background: rgba(239,68,68,.18);
+}
+
+.share-status{
+  margin-top: 10px;
+  font-size: .92rem;
+  color: var(--panel-muted);
+}
+
+.share-list{
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.share-list h4{
+  margin: 0 0 10px;
+  font-size: .95rem;
+  color: var(--panel-text);
+}
+
+.share-user{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 10px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.03);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.share-user small{
+  color: var(--panel-muted);
+}
+
+.share-user .u-actions{
+  display:flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.share-user .u-actions button{
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05);
+  color: var(--panel-text);
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.share-user .u-actions button:hover{ background: rgba(255,255,255,.10); }
+
+.share-user .u-actions .ok{
+  border-color: rgba(22,163,74,.55);
+  background: rgba(22,163,74,.18);
+}
+.share-user .u-actions .no{
+  border-color: rgba(239,68,68,.55);
+  background: rgba(239,68,68,.18);
+}

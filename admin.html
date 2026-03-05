@@ -1,0 +1,1349 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Správa písní</title>
+<link rel="stylesheet" href="assets/style.css" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0f1729" />
+<link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Zpěvník" />
+
+<style>
+  .grid{display:grid;gap:10px}
+  .two{grid-template-columns:1fr 1fr}
+  .full{grid-column:1 / -1;}
+  .note{color:#9fb0c7}
+  .ok{color:#22c55e}
+  .danger{background:#2b1b1b;border:1px solid #7f1d1d}
+  .ghost{background:transparent;border:1px solid #273142}
+  .list .item .muted{color:#9fb0c7}
+
+  /* ---------- Editor s podtržením dlouhých řádků (mirror-based) ---------- */
+  .editor, .editor textarea, .editor .marks, .editor .mirror{
+    --ed-font: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --ed-size: 16px; --ed-line: 24px; --ed-pad: 8px;
+    font-family: var(--ed-font); font-size: var(--ed-size); line-height: var(--ed-line);
+    box-sizing: border-box; tab-size: 4;
+  }
+  .editor{ position:relative; overflow:hidden; }
+  .editor textarea{
+    width:100%; min-height:520px; resize:vertical; background:transparent; color:#fff;
+    position:relative; z-index:1; padding: var(--ed-pad);
+  }
+  .marks{ position:absolute; inset:0; z-index:2; pointer-events:none; overflow:hidden; padding: var(--ed-pad); }
+  .marks-content{ position:relative; min-height:100%; will-change: transform; }
+  .mirror{ position:absolute; inset:0; padding: var(--ed-pad); white-space:pre-wrap; overflow-wrap:anywhere; visibility:hidden; z-index:-1; }
+  .mark{ position:absolute; left:0; right:0; height:2px; background:#ef4444; border-radius:1px; }
+
+  /* Ovládací prvky */
+  #toggleMarks{ align-self:end; justify-self:end; padding:6px 10px; font-size:14px; }
+  .limitCtl{ display:flex; gap:6px; align-items:center; justify-content:flex-end; }
+  #limitVal{ width:84px; }
+
+  /* ---------- Collapsibles ---------- */
+  details.accordion{ border:1px solid #1f2b46; border-radius:10px; padding:0; margin-top:14px; background:var(--card); }
+  details.accordion > summary{ list-style:none; cursor:pointer; padding:12px 14px; font-weight:600; display:flex; align-items:center; gap:8px; user-select:none; }
+  details.accordion > summary::before{ content: '▸'; transition: transform .15s ease; display:inline-block; }
+  details.accordion[open] > summary::before{ transform: rotate(90deg); }
+  details.accordion .accordion-body{ padding: 0 14px 14px; }
+  details.accordion .accordion-body > .card{ margin-top:12px; }
+  details.accordion .accordion-body > .card:first-child{ margin-top:0; }
+
+  /* ---------- Zpěvníky UI ---------- */
+  .songbooks{ display:flex; flex-direction:column; gap:8px; }
+  .songbook-row{ display:grid; grid-template-columns: 1fr 130px 40px; gap:8px; align-items:end; }
+  .songbook-row input[type="number"]{ width:100%; }
+  .songbook-row button{ height:36px; }
+  .row-actions{ display:flex; gap:6px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:6px; }
+  .chip{ padding:4px 8px; border:1px solid #273142; border-radius:999px; }
+   .sb-manage-list .item{ display:grid; grid-template-columns: 80px 1fr 80px 36px 36px; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid #1f2b46; }
+  .sb-manage-list .item:last-child{ border-bottom:none; }
+  .sb-manage-num{ width:100%; }
+  .sb-manage-order{ display:flex; gap:4px; }
+</style>
+</head>
+
+<body>
+<div class="container">
+  <div class="header">
+    <h1 style="margin:0">Správa písní</h1>
+    <a href="index.html">← Zpět</a>
+  </div>
+
+  <!-- ========== SEKCE 1: VLOŽIT NOVOU PÍSEŇ (COLLAPSIBLE) ========== -->
+  <details class="accordion" open>
+    <summary>Vložit novou píseň</summary>
+    <div class="accordion-body">
+      <div class="card">
+        <div class="grid two">
+          <label>Token (PAT)
+            <input id="token" placeholder="ghp_… nebo github_pat_…" />
+            <div class="note">Scopes: <code>Repository contents → Read and write</code> pro vybraný repozitář.</div>
+          </label>
+          <div>
+            <button id="saveToken">Uložit token do prohlížeče</button>
+            <button id="clearToken">Smazat token</button>
+          </div>
+        </div>
+
+        <hr class="sep"/>
+
+        <div class="grid two">
+          <label>Název písně
+            <input id="title" placeholder="Greensleeves" />
+          </label>
+          <label>Autor
+            <input id="artist" placeholder="Traditional" />
+          </label>
+        </div>
+
+        <div class="grid two">
+          <label>Číslo (volitelné pro řazení)
+            <input id="number" type="number" min="1" step="1" placeholder="1" />
+          </label>
+          <label>Tonina (volitelně – meta)
+            <input id="key" placeholder="Am" />
+          </label>
+          <label>Formát vstupu
+            <select id="fmt">
+              <option value="auto" selected>Auto</option>
+              <option value="chordpro">ChordPro</option>
+              <option value="ug">Ultimate Guitar</option>
+            </select>
+          </label>
+          <div class="limitCtl">
+            <button id="toggleMarks">⚙ Upozornění: zapnuto</button>
+            <input id="limitVal" type="number" min="10" max="200" step="1" />
+            <button id="applyLimit" title="Nastavit hranici znaků">Nastavit limit</button>
+          </div>
+        </div>
+
+        <!-- NOVÁ SEKCE: Zpěvníky pro NOVOU píseň -->
+        <div class="full">
+          <label style="display:block;margin:6px 0 4px;font-weight:600;">Zařadit do zpěvníku</label>
+          <div class="songbooks" id="sbNewList"></div>
+          <div class="row-actions" style="margin-top:6px;">
+            <button id="sbNewAdd">+ Přidat zpěvník</button>
+            <div class="chips note" id="sbNewHint"></div>
+          </div>
+          <!-- datalist pro našeptání existujících -->
+          <datalist id="songbooksAll"></datalist>
+        </div>
+
+        <label class="full">Text (ChordPro)
+          <div class="editor">
+            <div id="marks" class="marks"><div id="marksContent" class="marks-content"></div></div>
+            <textarea id="body" placeholder="[Am]Alas my love…"></textarea>
+            <div id="mirror" class="mirror" aria-hidden="true"></div>
+          </div>
+        </label>
+
+        <div class="grid two">
+          <label>Název souboru (automaticky)
+            <input id="filename" readonly />
+            <div class="note">Uloží se do <code>/songs</code> jako <code>NNN-nazev-autor.pro</code>.</div>
+          </label>
+          <div style="display:flex;gap:8px;align-items:end;justify-content:flex-end">
+            <button id="saveBtn">💾 Uložit do GitHubu</button>
+          </div>
+        </div>
+
+        <div id="status" class="note" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </details>
+
+  <!-- ========== SEKCE 2: UPRAVIT / SMAZAT PÍSEŇ (COLLAPSIBLE) ========== -->
+  <details class="accordion">
+    <summary>Upravit existující píseň</summary>
+    <div class="accordion-body">
+      <div class="card">
+        <h2 style="margin:0 0 8px">Upravit existující píseň</h2>
+
+        <div class="grid two">
+          <label>Vyhledat (název nebo číslo)
+            <input id="editSearch" placeholder="např. 'Greensleeves' nebo 12" />
+          </label>
+          <div style="align-self:end;justify-self:end">
+            <button id="reloadIndex">↻ Načíst seznam písní</button>
+          </div>
+        </div>
+        <div id="editResults" class="list" style="margin-top:8px"></div>
+
+        <hr class="sep"/>
+
+        <div class="grid two">
+          <label>Název písně
+            <input id="eTitle" />
+          </label>
+          <label>Autor
+            <input id="eArtist" />
+          </label>
+        </div>
+
+        <div class="grid two">
+          <label>Číslo (volitelné)
+            <input id="eNumber" type="number" min="1" step="1" />
+          </label>
+          <label>Tonina (meta)
+            <input id="eKey" placeholder="Am" />
+          </label>
+        </div>
+
+        <!-- NOVÁ SEKCE: Zpěvníky pro EDIT -->
+        <div class="full">
+          <label style="display:block;margin:6px 0 4px;font-weight:600;">Zařazení ve zpěvnících</label>
+          <div class="songbooks" id="sbEditList"></div>
+          <div class="row-actions" style="margin-top:6px;">
+            <button id="sbEditAdd">+ Přidat zpěvník</button>
+            <div class="chips note" id="sbEditHint"></div>
+          </div>
+        </div>
+
+        <label class="full">Text (ChordPro)
+          <div class="editor">
+            <div id="editMarks" class="marks"><div id="editMarksContent" class="marks-content"></div></div>
+            <textarea id="editBody" placeholder="[Am]Alas my love…"></textarea>
+            <div id="editMirror" class="mirror" aria-hidden="true"></div>
+          </div>
+        </label>
+
+        <div class="grid two">
+          <label>Cesta v repozitáři
+            <input id="editPath" readonly />
+            <div class="note">Soubor se nepřejmenovává (zůstává původní). Pro přejmenování ulož novou píseň a starou případně smaž.</div>
+          </label>
+          <div style="display:flex;gap:8px;align-items:end;justify-content:flex-end">
+            <button id="saveEditBtn">💾 Uložit změny</button>
+            <button id="deleteEditBtn" class="danger">🗑 Smazat píseň</button>
+          </div>
+        </div>
+
+        <div id="editStatus" class="note" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </details>
+  
+  <!-- ========== SEKCE 3: SPRÁVA ZPĚVNÍKŮ (COLLAPSIBLE) ========== -->
+  <details class="accordion">
+    <summary>Zpěvníky – tvorba a úpravy</summary>
+    <div class="accordion-body">
+      <div class="card">
+        <h2 style="margin:0 0 8px">Spravovat zpěvník</h2>
+
+        <div class="grid two">
+          <label>Vybrat existující zpěvník
+            <select id="sbManageSelect"></select>
+          </label>
+          <div class="row-actions" style="align-self:end;justify-self:end">
+            <button id="sbManageLoad">Načíst</button>
+            <button id="sbManageClear" class="ghost">Vyčistit</button>
+          </div>
+        </div>
+
+        <label>Název zpěvníku
+          <input id="sbManageName" placeholder="Zpjěvníček 2" />
+        </label>
+
+        <div class="grid two">
+          <label>Vyhledat píseň pro přidání
+            <input id="sbManageSearch" placeholder="název nebo číslo" />
+          </label>
+          <div class="note" style="align-self:end">Přidej kliknutím na „+“ nebo přetřiď pomocí šipek.</div>
+        </div>
+        <div id="sbManageSearchResults" class="list" style="margin-top:6px"></div>
+
+        <h3 style="margin:12px 0 4px">Písně ve zpěvníku</h3>
+        <div id="sbManageList" class="sb-manage-list"></div>
+        <div class="row-actions" style="margin-top:8px; justify-content:space-between;">
+          <button id="sbManageReindex" class="ghost">Přečíslovat podle pořadí</button>
+          <button id="sbManageSave">💾 Uložit zpěvník</button>
+        </div>
+
+        <div id="sbManageStatus" class="note" style="margin-top:6px"></div>
+      </div>
+    </div>
+  </details>
+</div>
+
+<script>
+/* --------------------------- Pomocné elementy --------------------------- */
+const qs = s => document.querySelector(s);
+const statusEl = qs('#status');
+const titleEl = qs('#title');
+const artistEl = qs('#artist');
+const numberEl = qs('#number');
+const keyEl = qs('#key');
+const bodyEl = qs('#body');
+const filenameEl = qs('#filename');
+
+const marksEl = document.getElementById('marks');
+const marksContentEl = document.getElementById('marksContent');
+const mirrorEl = document.getElementById('mirror');
+const toggleMarksBtn = document.getElementById('toggleMarks');
+const limitInput = document.getElementById('limitVal');
+const applyLimitBtn = document.getElementById('applyLimit');
+
+let rowLimit = Number(localStorage.getItem('row_limit') || '30');
+limitInput.value = rowLimit;
+
+const CHORD_BRACKETS_RE = /\[[^\]]*]/g;
+let marksEnabled = true;
+
+function slug(s){
+  return (s||'').toLowerCase()
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+}
+function b64utf8(str){ return btoa(unescape(encodeURIComponent(str))); }
+function status(msg, ok=false){
+  statusEl.textContent = msg;
+  statusEl.className = 'note' + (ok?' ok':'');
+}
+function computeFilename(){
+  const n = numberEl.value ? String(numberEl.value).padStart(3,'0')+'-' : '';
+  const t = slug(titleEl.value||'pisen');
+  const a = slug(artistEl.value||'');
+  filenameEl.value = `${n}${t}${a?'-'+a:''}.pro`;
+}
+['input','change'].forEach(ev=>{
+  titleEl.addEventListener(ev, computeFilename);
+  artistEl.addEventListener(ev, computeFilename);
+  numberEl.addEventListener(ev, computeFilename);
+});
+computeFilename();
+
+// token storage
+const tokenEl = qs('#token');
+const saved = localStorage.getItem('gh_pat');
+if(saved) tokenEl.value = saved;
+qs('#saveToken').onclick = ()=>{ localStorage.setItem('gh_pat', tokenEl.value.trim()); status('Token uložen.', true); };
+qs('#clearToken').onclick = ()=>{ localStorage.removeItem('gh_pat'); tokenEl.value=''; status('Token smazán.', true); };
+
+function detectRepo(){
+  const host = location.host;
+  const parts = location.pathname.split('/').filter(Boolean);
+  const repo = parts.length? parts[0] : '';
+  const user = host.includes('github.io') ? host.split('.')[0] : '';
+  return {user, repo};
+}
+
+/* --------------------- zvýraznění dlouhých řádků ---------------------- */
+function escapeHtml(s){ return s.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+function rebuildMarks(){
+  if (!marksEnabled) {
+    marksContentEl.innerHTML = '';
+    marksContentEl.style.height = '0px';
+    marksEl.style.display = 'none';
+    return;
+  }
+  marksEl.style.display = '';
+  const text = bodyEl.value.replace(/\r/g,'');
+  const lines = text.split('\n');
+
+  mirrorEl.innerHTML = '';
+  for (let i=0;i<lines.length;i++){
+    const span = document.createElement('span');
+    span.className = 'line';
+    span.innerHTML = lines[i].length ? escapeHtml(lines[i]) : ' ';
+    mirrorEl.appendChild(span);
+    if (i < lines.length-1) mirrorEl.appendChild(document.createElement('br'));
+  }
+
+  const overIdx = new Set();
+  lines.forEach((L, i)=>{
+    const visible = L.replace(CHORD_BRACKETS_RE, '');
+    if (visible.length > rowLimit) overIdx.add(i);
+  });
+
+  marksContentEl.innerHTML = '';
+  marksContentEl.style.height = mirrorEl.scrollHeight + 'px';
+  const spans = mirrorEl.querySelectorAll('.line');
+  spans.forEach((span, i)=>{
+    if (!overIdx.has(i)) return;
+    const top = span.offsetTop + span.offsetHeight - 2;
+    const mark = document.createElement('div');
+    mark.className = 'mark';
+    mark.style.top = top + 'px';
+    marksContentEl.appendChild(mark);
+  });
+}
+bodyEl.addEventListener('scroll', ()=>{
+  marksContentEl.style.transform = `translate(${-bodyEl.scrollLeft}px, ${-bodyEl.scrollTop}px)`;
+  mirrorEl.scrollTop = bodyEl.scrollTop;
+  mirrorEl.scrollLeft = bodyEl.scrollLeft;
+});
+['input','change','keyup'].forEach(ev => bodyEl.addEventListener(ev, rebuildMarks));
+window.addEventListener('resize', rebuildMarks);
+rebuildMarks();
+
+toggleMarksBtn.addEventListener('click', ()=>{
+  marksEnabled = !marksEnabled;
+  toggleMarksBtn.textContent = marksEnabled ? '⚙ Upozornění: zapnuto' : '⚙ Upozornění: vypnuto';
+  rebuildMarks();
+});
+applyLimitBtn.addEventListener('click', ()=>{
+  const v = Number(limitInput.value);
+  if (!Number.isFinite(v) || v < 1) return;
+  rowLimit = v;
+  localStorage.setItem('row_limit', String(rowLimit));
+  rebuildMarks();
+});
+
+/* -------------------------- UG → ChordPro -------------------------- */
+const CHORD_RE = /^(?:[A-H](?:#|b)?)(?:(?:maj|min|dim|aug|sus[24]?|add\d+|m|mi|moll|dur)(?:\d+)?)?(?:\d+)?(?:\/[A-H](?:#|b)?)?$/i;
+function isChordishToken(tok) {
+  if (!tok) return false;
+  if (CHORD_RE.test(tok)) return true;
+  if (/^[A-H]$/i.test(tok)) return true;
+  if (/^\d{1,2}$/.test(tok)) return true;
+  if (/^(N\.C\.|NC|x)$/i.test(tok)) return true;
+  return false;
+}
+function looksLikeTab(line) {
+  const t = line.trim();
+  if (/^[eBGDAE]\|[-x\ds\s|]+$/.test(t)) return true;
+  if (/-{3,}/.test(t)) return true;
+  return false;
+}
+function isChordLine(line) {
+  if (!line || !line.trim()) return false;
+  if (looksLikeTab(line)) return false;
+  const hasLongSpaces = / {2,}/.test(line);
+  const rawParts = line.trim().split(/\s+/);
+  let chordy = 0, ostatni = 0, totalLen = 0;
+  for (const p of rawParts) {
+    const clean = p.replace(/[|()·•.\u00B7]+/g, '').replace(/^-+|-+$/g, '');
+    if (!clean) continue;
+    totalLen += clean.length;
+    if (isChordishToken(clean)) chordy++; else ostatni++;
+  }
+  if (chordy === 0) return false;
+  const ratioOK = (ostatni === 0) || (chordy/(chordy+ostatni) >= 0.8);
+  const avgLen = totalLen / Math.max(1,(chordy+ostatni));
+  return ratioOK && (hasLongSpaces || avgLen <= 3);
+}
+function mergeChordAndLyrics(chordsLine, lyricLine){
+  const pos = [];
+  let i = 0;
+  while (i < chordsLine.length){
+    while (i < chordsLine.length && chordsLine[i] === ' ') i++;
+    if (i >= chordsLine.length) break;
+    const start = i;
+    while (i < chordsLine.length && chordsLine[i] !== ' ') i++;
+    const token = chordsLine.slice(start, i).replace(/[|()\-·•.]+/g, '');
+    if (CHORD_RE.test(token)) pos.push({col:start, chord:token});
+  }
+  if (!pos.length) return lyricLine;
+  let out = lyricLine;
+  pos.sort((a,b)=>b.col-a.col).forEach(p=>{
+    const idx = Math.min(Math.max(p.col, 0), out.length);
+    out = out.slice(0, idx) + `[${p.chord}]` + out.slice(idx);
+  });
+  return out;
+}
+function ugToChordPro(text){
+  let t = text.replace(/\r/g,'');
+  t = t.replace(/\[ch\]\s*([^\[]+?)\s*\[\/ch\]/gi, (_m, g1) => `[${g1.trim()}]`);
+  const lines = t.split('\n');
+  const out = [];
+  for (let i = 0; i < lines.length; i++){
+    const L = lines[i];
+    const sec = L.match(/^\s*(?:\[(verse|chorus|bridge|intro|outro|solo)\]|\((verse|chorus|bridge|intro|outro|solo)\))\s*$/i);
+    if (sec) { out.push(`{comment: ${(sec[1]||sec[2]).toLowerCase()}}`); continue; }
+    if (isChordLine(L) && i+1 < lines.length){
+      out.push( mergeChordAndLyrics(L, lines[i+1] || '') );
+      i++;
+      continue;
+    }
+    out.push(L);
+  }
+  const compact=[]; let prevEmpty=false;
+  for (const r of out){
+    const empty=!r.trim();
+    if (empty && prevEmpty) continue;
+    compact.push(r);
+    prevEmpty=empty;
+  }
+  return compact.join('\n');
+}
+
+/* ================== ZPĚVNÍKY – opakovatelné řádky ================== */
+const sbNewList = document.getElementById('sbNewList');
+const sbEditList = document.getElementById('sbEditList');
+const sbNewAddBtn = document.getElementById('sbNewAdd');
+const sbEditAddBtn = document.getElementById('sbEditAdd');
+const sbNewHint = document.getElementById('sbNewHint');
+const sbEditHint = document.getElementById('sbEditHint');
+const datalistAll = document.getElementById('songbooksAll');
+  
+const sbManageSelect = document.getElementById('sbManageSelect');
+const sbManageLoadBtn = document.getElementById('sbManageLoad');
+const sbManageClearBtn = document.getElementById('sbManageClear');
+const sbManageNameEl = document.getElementById('sbManageName');
+const sbManageSearchEl = document.getElementById('sbManageSearch');
+const sbManageSearchResultsEl = document.getElementById('sbManageSearchResults');
+const sbManageListEl = document.getElementById('sbManageList');
+const sbManageSaveBtn = document.getElementById('sbManageSave');
+const sbManageStatusEl = document.getElementById('sbManageStatus');
+const sbManageReindexBtn = document.getElementById('sbManageReindex');
+
+let ALL_SONGBOOKS = []; // naplní se ze songs.json (pokud obsahuje 'songbooks')
+let SONGBOOK_INDEX = new Map(); // jméno -> [{song, number}]
+let MANAGED_BOOK = { name: '', items: [] }; // items: {id, file, title, author, number}
+function renderSongbookRow(container, name='', num=''){
+  const row = document.createElement('div');
+  row.className = 'songbook-row';
+  row.innerHTML = `
+    <div>
+      <input list="songbooksAll" class="sb-name" placeholder="Název zpěvníku" value="${escapeHtml(name)}" />
+    </div>
+    <div>
+      <input class="sb-num" type="number" min="1" step="1" placeholder="číslo" value="${escapeHtml(String(num||''))}">
+    </div>
+    <div>
+      <button type="button" class="ghost sb-del" title="Odebrat řádek">✕</button>
+    </div>`;
+  row.querySelector('.sb-del').onclick = ()=> container.removeChild(row);
+  container.appendChild(row);
+}
+sbNewAddBtn.onclick = ()=> renderSongbookRow(sbNewList,'','');
+sbEditAddBtn.onclick = ()=> renderSongbookRow(sbEditList,'','');
+
+function collectSongbooks(container){
+  const list = [];
+  container.querySelectorAll('.songbook-row').forEach(row=>{
+    const name = row.querySelector('.sb-name')?.value.trim();
+    const num  = row.querySelector('.sb-num')?.value.trim();
+    if (name && num) list.push({ name, number: Number(num) });
+  });
+  return list;
+}
+function setSongbookHint(el, arr){
+  if (!arr || !arr.length){ el.innerHTML = ''; return; }
+  el.innerHTML = arr.map(s=>`<span class="chip">${escapeHtml(s.name)} · ${escapeHtml(String(s.number))}</span>`).join('');
+}
+function fillDatalist(){
+  datalistAll.innerHTML = Array.from(new Set(ALL_SONGBOOKS.map(s=>s.name)))
+    .sort((a,b)=>a.localeCompare(b,'cs'))
+    .map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
+}
+function buildSongbookIndex(){
+  const map = new Map();
+  for (const it of SONG_INDEX_DATA){
+    const books = [];
+    if (it && it.books && typeof it.books === 'object'){
+      for (const k of Object.keys(it.books)) books.push({ name: k, number: it.books[k] });
+    }
+    if (Array.isArray(it.songbooks)){
+      for (const sb of it.songbooks){
+        if (sb && sb.name) books.push({ name: sb.name, number: sb.number });
+      }
+    }
+    for (const sb of books){
+      if (!map.has(sb.name)) map.set(sb.name, []);
+      map.get(sb.name).push({ song: it, number: sb.number });
+    }
+  }
+  SONGBOOK_INDEX = map;
+  renderSongbookSelect();
+}
+function renderSongbookSelect(){
+  const names = Array.from(SONGBOOK_INDEX.keys()).sort((a,b)=>a.localeCompare(b,'cs'));
+  sbManageSelect.innerHTML = ['<option value="">Vyber zpěvník…</option>', ...names.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`)].join('');
+}
+function sbManageStatus(msg, ok=false){
+  sbManageStatusEl.textContent = msg;
+  sbManageStatusEl.className = 'note' + (ok?' ok':'');
+}
+function setManagedBook(name, items){
+  MANAGED_BOOK = { name, items: [...items] };
+  sbManageNameEl.value = name || '';
+  renderManagedList();
+}
+function renderManagedList(){
+  if (!MANAGED_BOOK.items.length){
+    sbManageListEl.innerHTML = '<div class="note">Zpěvník je prázdný. Přidej písně vlevo nahoře.</div>';
+    return;
+  }
+  sbManageListEl.innerHTML = MANAGED_BOOK.items.map((it, idx)=>{
+    const author = it.author ? ` — <span class="muted">${escapeHtml(it.author)}</span>` : '';
+    const title = `<div><b>${escapeHtml(it.title)}</b>${author}</div>`;
+    const path = `<div class="note" style="font-size:12px">${escapeHtml(it.file || '')}</div>`;
+    return `
+      <div class="item" data-id="${encodeURIComponent(it.id || it.file || it.title)}">
+        <input class="sb-manage-num" type="number" min="1" step="1" value="${escapeHtml(String(it.number||idx+1))}" />
+        <div>${title}${path}</div>
+        <div class="sb-manage-order">
+          <button type="button" class="ghost" data-up>↑</button>
+          <button type="button" class="ghost" data-down>↓</button>
+        </div>
+        <button type="button" class="ghost sb-del">✕</button>
+        <span></span>
+      </div>`;
+  }).join('');
+
+  sbManageListEl.querySelectorAll('.sb-manage-num').forEach((inp, idx)=>{
+    inp.onchange = ()=>{
+      const num = Number(inp.value);
+      if (!Number.isFinite(num)) return;
+      MANAGED_BOOK.items[idx].number = num;
+    };
+  });
+  sbManageListEl.querySelectorAll('[data-up]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const row = btn.closest('.item');
+      const id = row?.getAttribute('data-id');
+      const i = MANAGED_BOOK.items.findIndex(x=> encodeURIComponent(x.id || x.file || x.title) === id);
+      if (i>0){
+        const tmp = MANAGED_BOOK.items[i-1];
+        MANAGED_BOOK.items[i-1] = MANAGED_BOOK.items[i];
+        MANAGED_BOOK.items[i] = tmp;
+        reindexManagedNumbers();
+      }
+    };
+  });
+  sbManageListEl.querySelectorAll('[data-down]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const row = btn.closest('.item');
+      const id = row?.getAttribute('data-id');
+      const i = MANAGED_BOOK.items.findIndex(x=> encodeURIComponent(x.id || x.file || x.title) === id);
+      if (i>=0 && i < MANAGED_BOOK.items.length-1){
+        const tmp = MANAGED_BOOK.items[i+1];
+        MANAGED_BOOK.items[i+1] = MANAGED_BOOK.items[i];
+        MANAGED_BOOK.items[i] = tmp;
+        reindexManagedNumbers();
+      }
+    };
+  });
+  sbManageListEl.querySelectorAll('.sb-del').forEach(btn=>{
+    btn.onclick = ()=>{
+      const row = btn.closest('.item');
+      const id = row?.getAttribute('data-id');
+      MANAGED_BOOK.items = MANAGED_BOOK.items.filter(x=> encodeURIComponent(x.id || x.file || x.title) !== id);
+      renderManagedList();
+    };
+  });
+}
+function reindexManagedNumbers(){
+  MANAGED_BOOK.items = MANAGED_BOOK.items.map((it, idx)=>({ ...it, number: idx+1 }));
+  renderManagedList();
+}
+/* --------------------- SAVE – NOVÁ PÍSEŇ --------------------- */
+document.getElementById('saveBtn').onclick = async () => {
+  try {
+    const { user, repo } = detectRepo();
+    if (!user || !repo) return status('Nepodařilo se odvodit user/repo z URL. Ulož soubor ručně přes GitHub UI.');
+    const token = (qs('#token').value || '').trim();
+    if (!token) return status('Vlož prosím PAT token.');
+    if (!titleEl.value.trim()) return status('Doplň název písně.');
+
+    // vstupní text -> případně převod z UG
+    let textBody = bodyEl.value.replace(/\r/g,'');
+    const fmtSel = (document.getElementById('fmt')?.value) || 'auto';
+    const looksUG = /\[ch\]/i.test(textBody) || textBody.split('\n').some(isChordLine);
+    if (fmtSel === 'ug' || (fmtSel === 'auto' && looksUG)) textBody = ugToChordPro(textBody);
+
+    // meta + songbooks -> ChordPro
+    const lines = [];
+    lines.push(`{title: ${titleEl.value.trim()}}`);
+    if (artistEl.value.trim()) lines.push(`{artist: ${artistEl.value.trim()}}`);
+    if (keyEl.value.trim())    lines.push(`{key: ${keyEl.value.trim()}}`);
+
+    const sbArr = collectSongbooks(sbNewList);
+    setSongbookHint(sbNewHint, sbArr);
+for (const sb of sbArr){
+  lines.push(`{book: ${sb.name} = ${sb.number}}`);
+}
+
+
+    lines.push('');
+    lines.push(textBody);
+    const content = lines.join('\n');
+
+    const filename = filenameEl.value || 'pisen.pro';
+    const path = `songs/${filename}`;
+
+    status('Ukládám…');
+    const putRes = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${encodeURIComponent(path)}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' },
+      body: JSON.stringify({
+        message: `feat(song): add ${titleEl.value.trim()}`,
+        content: b64utf8(content),
+        branch: 'main'
+      })
+    });
+    if (!putRes.ok){
+      const t = await putRes.text();
+      throw new Error(`GitHub API ${putRes.status}: ${t}`);
+    }
+    status('Hotovo! Soubor uložen do /songs.', true);
+
+    // pokus o update data/songs.json (není-li generováno automaticky)
+    await tryUpdateSongsJson({user,repo,token}, {
+      file: path,
+      title: titleEl.value.trim(),
+      author: artistEl.value.trim(),
+      number: numberEl.value ? Number(numberEl.value) : null,
+      songbooks: sbArr
+    });
+
+  } catch(e){
+    console.error(e);
+    status('Chyba: ' + e.message);
+  }
+};
+
+/* ====================== ÚPRAVY / DELETE – LOGIKA ====================== */
+const editStatusEl = document.getElementById('editStatus');
+function estatus(msg, ok=false){ editStatusEl.textContent = msg; editStatusEl.className = 'note' + (ok ? ' ok' : ''); }
+
+const editSearchEl = document.getElementById('editSearch');
+const editResultsEl = document.getElementById('editResults');
+const eTitleEl = document.getElementById('eTitle');
+const eArtistEl = document.getElementById('eArtist');
+const eNumberEl = document.getElementById('eNumber');
+const eKeyEl = document.getElementById('eKey');
+const editBodyEl = document.getElementById('editBody');
+const editPathEl = document.getElementById('editPath');
+const saveEditBtn = document.getElementById('saveEditBtn');
+const deleteEditBtn= document.getElementById('deleteEditBtn');
+const reloadIndexBtn = document.getElementById('reloadIndex');
+
+const editMarksEl = document.getElementById('editMarks');
+const editMarksContentEl = document.getElementById('editMarksContent');
+const editMirrorEl = document.getElementById('editMirror');
+let SONG_INDEX_DATA = [];
+let EDIT_SELECTED = null;
+let editMarksEnabled = true;
+let rowLimitEdit = Number(localStorage.getItem('row_limit') || '30');
+
+async function loadSongsIndex(){
+  try{
+    const res = await fetch('data/songs.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('Nelze načíst data/songs.json');
+    SONG_INDEX_DATA = await res.json();
+
+    // sběr seznamu zpěvníků (pokud už jsou v JSONu)
+const acc = [];
+for (const it of SONG_INDEX_DATA){
+  // nový formát: books jako objekt { "Název": číslo, ... }
+  if (it && it.books && typeof it.books === 'object'){
+    for (const k of Object.keys(it.books)){
+      acc.push({ name: k, number: it.books[k] });
+    }
+  }
+  // zpětná kompatibilita: staré pole songbooks
+  if (Array.isArray(it.songbooks)){
+    for (const sb of it.songbooks){
+      if (sb && sb.name) acc.push({name: sb.name, number: sb.number});
+    }
+  }
+}
+  ALL_SONGBOOKS = acc;
+  fillDatalist();
+  buildSongbookIndex();
+
+
+    estatus('Seznam písní načten.', true);
+  }catch(e){
+    console.error(e);
+    estatus('Chyba při načítání seznamu písní: ' + e.message);
+  }
+}
+function searchSongs(q){
+  if(!SONG_INDEX_DATA || !SONG_INDEX_DATA.length) return [];
+  const s = (q||'').toLowerCase().trim();
+  if(!s) return [];
+  const asNum = Number(s);
+  return SONG_INDEX_DATA.filter(item=>{
+    const titleHit = (item.title||'').toLowerCase().includes(s);
+    const numberHit = Number.isFinite(asNum) && ( (item.number|0) === asNum );
+    return titleHit || numberHit;
+  }).slice(0, 20);
+}
+  function getBookNumberFromItem(item, book){
+  if (!item) return null;
+  if (item.books && Object.prototype.hasOwnProperty.call(item.books, book)){
+    const num = Number(item.books[book]);
+    if (Number.isFinite(num)) return num;
+  }
+  if (Array.isArray(item.songbooks)){
+    for (const sb of item.songbooks){
+      if (sb && sb.name === book && Number.isFinite(+sb.number)) return Number(sb.number);
+    }
+  }
+  return null;
+}
+function renderEditResults(list){
+  if(!list.length){
+    editResultsEl.innerHTML = '<div class="note">Nenalezeno.</div>';
+    return;
+  }
+  editResultsEl.innerHTML = list.map(it=>{
+    const num = (it.number!=null && it.number!=='') ? `${it.number} · ` : '';
+    const author = it.author ? ` — <span class="muted">${it.author}</span>` : '';
+    return `
+    <div class="item" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #1f2b46">
+      <div>
+        <div><b>${num}${it.title}</b>${author}</div>
+        <div class="note" style="font-size:12px">${it.file || ''}</div>
+      </div>
+      <div><button class="ghost" data-load="${encodeURIComponent(it.id || it.file || it.title)}">Načíst</button></div>
+    </div>`;
+  }).join('');
+  editResultsEl.querySelectorAll('button[data-load]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = decodeURIComponent(btn.getAttribute('data-load'));
+      const found = SONG_INDEX_DATA.find(s=> (s.id===id) || (s.file===id) || (s.title===id) );
+      if(found) loadSongForEdit(found);
+    };
+  });
+}
+  function loadSongbookForManage(name){
+  const list = SONGBOOK_INDEX.get(name) || [];
+  const sorted = [...list].sort((a,b)=>{
+    const an = Number.isFinite(+a.number) ? +a.number : 1e9;
+    const bn = Number.isFinite(+b.number) ? +b.number : 1e9;
+    if (an !== bn) return an - bn;
+    return (a.song.title||'').localeCompare(b.song.title||'', 'cs');
+  });
+  const items = sorted.map((it, idx)=>({
+    id: it.song.id || it.song.file || it.song.title,
+    file: it.song.file,
+    title: it.song.title || 'Neznámá píseň',
+    author: it.song.author || '',
+    number: Number.isFinite(+it.number) ? Number(it.number) : idx+1
+  }));
+  setManagedBook(name, items);
+  sbManageStatus(`Načten zpěvník „${name}“ (${items.length} písní).`, true);
+}
+function renderSongAddResults(list){
+  if(!list.length){
+    sbManageSearchResultsEl.innerHTML = '';
+    return;
+  }
+  sbManageSearchResultsEl.innerHTML = list.map(it=>{
+    const num = (it.number!=null && it.number!=='') ? `${it.number} · ` : '';
+    const author = it.author ? ` — <span class="muted">${escapeHtml(it.author)}</span>` : '';
+    return `
+      <div class="item" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;">
+        <div>
+          <div><b>${num}${escapeHtml(it.title||'')}</b>${author}</div>
+          <div class="note" style="font-size:12px">${escapeHtml(it.file||'')}</div>
+        </div>
+        <div><button class="ghost" data-add="${encodeURIComponent(it.id || it.file || it.title)}">+</button></div>
+      </div>`;
+  }).join('');
+
+  sbManageSearchResultsEl.querySelectorAll('button[data-add]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = decodeURIComponent(btn.getAttribute('data-add'));
+      const found = SONG_INDEX_DATA.find(s=> (s.id===id) || (s.file===id) || (s.title===id) );
+      if(found) addSongToManaged(found);
+    };
+  });
+}
+function addSongToManaged(song){
+  if (!song) return;
+  const exists = MANAGED_BOOK.items.some(it=> (it.id === song.id) || (it.file === song.file));
+  if (exists) return;
+  const maxNum = MANAGED_BOOK.items.reduce((m,it)=> Math.max(m, Number(it.number)||0), 0);
+  MANAGED_BOOK.items.push({
+    id: song.id || song.file || song.title,
+    file: song.file,
+    title: song.title || 'Neznámá píseň',
+    author: song.author || '',
+    number: maxNum + 1
+  });
+  renderManagedList();
+}
+function parseChordProMetaAndBody(text){
+  const lines = text.replace(/\r/g,'').split('\n');
+  const meta = {};
+  const body = [];
+  const songbooks = []; // interně stále používáme pole {name, number}
+
+  for(const L of lines){
+    const m = L.match(/^\{(\w+)\s*:\s*(.*?)\s*\}$/);
+    if (m){
+      const key = m[1].toLowerCase();
+      const val = m[2];
+
+      if (key === 'book') {
+        // nový formát: {book: Název = Číslo}
+        const parts = val.split('=');
+        const name = (parts[0]||'').trim();
+        const num  = Number((parts[1]||'').trim());
+        if (name && Number.isFinite(num)) songbooks.push({name, number:num});
+      } else if (key === 'songbook') {
+        // zpětná kompatibilita: {songbook: Název|Číslo}
+        const tt = val.split('|');
+        const name = (tt[0]||'').trim();
+        const num  = Number((tt[1]||'').trim());
+        if (name && Number.isFinite(num)) songbooks.push({name, number:num});
+      } else {
+        meta[key] = val;
+      }
+    } else {
+      body.push(L);
+    }
+  }
+  while(body.length && !body[0].trim()) body.shift();
+  while(body.length && !body[body.length-1].trim()) body.pop();
+  return { meta, body: body.join('\n'), songbooks };
+}
+
+async function loadSongForEdit(item){
+  try{
+    EDIT_SELECTED = item;
+    estatus('Načítám soubor…');
+    const res = await fetch(item.file, { cache: 'no-store' });
+    if(!res.ok) throw new Error('Soubor nelze načíst: ' + item.file);
+    const txt = await res.text();
+    const { meta, body, songbooks } = parseChordProMetaAndBody(txt);
+
+    eTitleEl.value = meta.title || item.title || '';
+    eArtistEl.value = meta.artist || item.author || '';
+    eNumberEl.value = Number.isFinite(+item.number) ? String(item.number) : (meta.number||'');
+    eKeyEl.value = meta.key || '';
+    editBodyEl.value = body;
+
+    // zpěvníky – předvyplnit (z .pro má přednost)
+    sbEditList.innerHTML = '';
+   let sbSrc = (songbooks && songbooks.length) ? songbooks : [];
+if (!sbSrc.length && item && item.books && typeof item.books === 'object'){
+  sbSrc = Object.keys(item.books).map(name => ({ name, number: item.books[name] }));
+}
+if (!sbSrc.length && Array.isArray(item.songbooks)){
+  sbSrc = item.songbooks;
+}
+
+    if (sbSrc.length){
+      for (const s of sbSrc) renderSongbookRow(sbEditList, s.name, s.number);
+    } else {
+      // prázdný jeden řádek pro snadný start
+      renderSongbookRow(sbEditList,'','');
+    }
+    setSongbookHint(sbEditHint, sbSrc);
+
+    const path = (item.file && item.file.startsWith('songs/')) ? item.file : `songs/${(item.file||'').split('/').pop()}`;
+    editPathEl.value = path;
+
+    rebuildEditMarks();
+    estatus('Soubor načten.', true);
+  }catch(e){
+    console.error(e);
+    estatus('Chyba: ' + e.message);
+  }
+}
+function rewriteSongForBook(text, bookName, newNumber, fallback){
+  const { meta, body, songbooks } = parseChordProMetaAndBody(text);
+  const others = songbooks.filter(sb => sb.name !== bookName);
+  if (newNumber != null) others.push({ name: bookName, number: newNumber });
+
+  const lines = [];
+  if (meta.title || (fallback && fallback.title)) lines.push(`{title: ${meta.title || fallback.title}}`);
+  if (meta.artist || (fallback && fallback.author)) lines.push(`{artist: ${meta.artist || fallback.author}}`);
+  if (meta.key) lines.push(`{key: ${meta.key}}`);
+  if (meta.number) lines.push(`{number: ${meta.number}}`);
+  for (const k of Object.keys(meta)){
+    if (['title','artist','key','number'].includes(k)) continue;
+    lines.push(`{${k}: ${meta[k]}}`);
+  }
+  others.sort((a,b)=> (a.number??1e9) - (b.number??1e9)).forEach(sb=>{
+    lines.push(`{book: ${sb.name} = ${sb.number}}`);
+  });
+  lines.push('');
+  lines.push(body);
+  return { text: lines.join('\n'), songbooks: others };
+}
+async function updateSongFileForBook(ctx, song, bookName, newNumber){
+  const path = (song.file && song.file.startsWith('songs/')) ? song.file : `songs/${(song.file||'').split('/').pop()}`;
+  const metaRes = await fetch(`https://api.github.com/repos/${ctx.user}/${ctx.repo}/contents/${encodeURIComponent(path)}`, {
+    headers: { 'Authorization': `Bearer ${ctx.token}`, 'Accept': 'application/vnd.github+json' }
+  });
+  if(!metaRes.ok){
+    const t = await metaRes.text();
+    throw new Error(`GitHub API (get ${path}) ${metaRes.status}: ${t}`);
+  }
+  const metaJson = await metaRes.json();
+  const raw = b64utf8_decode(metaJson.content || '');
+  const rewritten = rewriteSongForBook(raw, bookName, newNumber, { title: song.title, author: song.author });
+  if (rewritten.text === raw) return; // nic se nezměnilo
+
+  const putRes = await fetch(`https://api.github.com/repos/${ctx.user}/${ctx.repo}/contents/${encodeURIComponent(path)}`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${ctx.token}`, 'Accept': 'application/vnd.github+json' },
+    body: JSON.stringify({
+      message: `chore(songbook): ${bookName} → ${song.title || path}`,
+      content: b64utf8(rewritten.text),
+      branch: 'main',
+      sha: metaJson.sha
+    })
+  });
+  if(!putRes.ok){
+    const t = await putRes.text();
+    throw new Error(`GitHub API (save ${path}) ${putRes.status}: ${t}`);
+  }
+
+  await tryUpdateSongsJson(ctx, {
+    file: path,
+    title: song.title || '',
+    author: song.author || '',
+    number: song.number ?? null,
+    songbooks: rewritten.songbooks
+  });
+}
+  
+function buildChordProFromEditor(){
+  const lines = [];
+  if (eTitleEl.value.trim()) lines.push(`{title: ${eTitleEl.value.trim()}}`);
+  if (eArtistEl.value.trim()) lines.push(`{artist: ${eArtistEl.value.trim()}}`);
+  if (eKeyEl.value.trim())    lines.push(`{key: ${eKeyEl.value.trim()}}`);
+
+  const sbArr = collectSongbooks(sbEditList);
+  setSongbookHint(sbEditHint, sbArr);
+ for (const sb of sbArr){
+  lines.push(`{book: ${sb.name} = ${sb.number}}`);
+}
+
+
+  lines.push('');
+  let body = editBodyEl.value.replace(/\r/g,'');
+  lines.push(body);
+  return { text: lines.join('\n'), songbooks: sbArr };
+}
+
+async function saveEditedSong(){
+  try{
+    if(!EDIT_SELECTED) return estatus('Nejprve vyber a načti píseň ze seznamu.');
+    const { user, repo } = detectRepo();
+    if (!user || !repo) return estatus('Nepodařilo se odvodit user/repo z URL.');
+    const token = (document.querySelector('#token')?.value || localStorage.getItem('gh_pat') || '').trim();
+    if (!token) return estatus('Chybí PAT token (zadej nahoře).');
+
+    const path = editPathEl.value.trim();
+    if (!path) return estatus('Chybí cesta k souboru.');
+
+    estatus('Zjišťuji sha…');
+    const metaRes = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${encodeURIComponent(path)}`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
+    });
+    if(!metaRes.ok){
+      const t = await metaRes.text();
+      throw new Error(`GitHub API (get sha) ${metaRes.status}: ${t}`);
+    }
+    const metaJson = await metaRes.json();
+    const sha = metaJson.sha;
+
+    const built = buildChordProFromEditor();
+
+    estatus('Ukládám změny…');
+    const putRes = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${encodeURIComponent(path)}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' },
+      body: JSON.stringify({
+        message: `chore(song): edit ${eTitleEl.value.trim() || EDIT_SELECTED.title || path}`,
+        content: b64utf8(built.text),
+        branch: 'main',
+        sha
+      })
+    });
+    if(!putRes.ok){
+      const t = await putRes.text();
+      throw new Error(`GitHub API (save) ${putRes.status}: ${t}`);
+    }
+    estatus('Hotovo! Změny uloženy.', true);
+
+    // pokus o update data/songs.json
+    await tryUpdateSongsJson({user,repo,token}, {
+      file: path,
+      title: eTitleEl.value.trim(),
+      author: eArtistEl.value.trim(),
+      number: eNumberEl.value ? Number(eNumberEl.value) : null,
+      songbooks: built.songbooks
+    });
+
+  }catch(e){
+    console.error(e);
+    estatus('Chyba: ' + e.message);
+  }
+}
+async function deleteEditedSong(){
+  try{
+    if(!EDIT_SELECTED) return estatus('Nejprve vyber a načti píseň ze seznamu.');
+    const { user, repo } = detectRepo();
+    if (!user || !repo) return estatus('Nepodařilo se odvodit user/repo z URL.');
+    const token = (document.querySelector('#token')?.value || localStorage.getItem('gh_pat') || '').trim();
+    if (!token) return estatus('Chybí PAT token (zadej nahoře).');
+
+    const path = editPathEl.value.trim();
+    if (!path) return estatus('Chybí cesta k souboru.');
+
+    const titleForConfirm = eTitleEl.value.trim() || EDIT_SELECTED.title || path;
+    if (!confirm(`Opravdu smazat píseň: "${titleForConfirm}"?\nTento krok vytvoří commit smazání v repozitáři.`)){ return; }
+
+    estatus('Zjišťuji sha pro smazání…');
+    const metaRes = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${encodeURIComponent(path)}`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
+    });
+    if(!metaRes.ok){
+      const t = await metaRes.text();
+      throw new Error(`GitHub API (get sha) ${metaRes.status}: ${t}`);
+    }
+    const metaJson = await metaRes.json();
+    const sha = metaJson.sha;
+
+    estatus('Mažu soubor…');
+    const delRes = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${encodeURIComponent(path)}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' },
+      body: JSON.stringify({ message: `chore(song): delete ${titleForConfirm}`, sha, branch: 'main' })
+    });
+    if(!delRes.ok){
+      const t = await delRes.text();
+      throw new Error(`GitHub API (delete) ${delRes.status}: ${t}`);
+    }
+
+    EDIT_SELECTED = null;
+    eTitleEl.value=''; eArtistEl.value=''; eNumberEl.value=''; eKeyEl.value='';
+    editBodyEl.value=''; editPathEl.value='';
+    sbEditList.innerHTML='';
+    renderSongbookRow(sbEditList,'','');
+    setSongbookHint(sbEditHint, []);
+
+    rebuildEditMarks();
+    estatus('Soubor byl smazán.', true);
+
+    await loadSongsIndex();
+    const q = editSearchEl.value;
+    renderEditResults(searchSongs(q));
+  }catch(e){
+    console.error(e);
+    estatus('Chyba: ' + e.message);
+  }
+}
+async function saveManagedSongbook(){
+  const bookName = sbManageNameEl.value.trim();
+  if (!bookName) return sbManageStatus('Zadej prosím název zpěvníku.');
+  const { user, repo } = detectRepo();
+  if (!user || !repo) return sbManageStatus('Nepodařilo se odvodit user/repo z URL.');
+  const token = (document.querySelector('#token')?.value || localStorage.getItem('gh_pat') || '').trim();
+  if (!token) return sbManageStatus('Chybí PAT token (zadej nahoře).');
+
+  // map s novým pořadím
+  const desired = new Map();
+  for (const it of MANAGED_BOOK.items){
+    const num = Number(it.number);
+    if (!Number.isFinite(num)) return sbManageStatus('Všechna čísla musí být platná čísla.');
+    desired.set(it.file, num);
+  }
+
+  sbManageStatus('Ukládám změny…');
+  const ctx = { user, repo, token };
+  let processed = 0;
+  for (const song of SONG_INDEX_DATA){
+    const currentNum = getBookNumberFromItem(song, bookName);
+    const newNum = desired.has(song.file) ? desired.get(song.file) : null;
+    if ((currentNum ?? null) === (newNum ?? null)) continue;
+    try{
+      await updateSongFileForBook(ctx, song, bookName, newNum);
+      processed++;
+    }catch(e){
+      console.error(e);
+      sbManageStatus('Chyba při ukládání: ' + e.message);
+      return;
+    }
+  }
+
+  await loadSongsIndex();
+  sbManageStatus(`Hotovo. Aktualizováno souborů: ${processed}.`, true);
+  if (bookName) loadSongbookForManage(bookName);
+}
+/* ------------------- MARKS pro EDIT ------------------- */
+function rebuildEditMarks(){
+  if (!editMarksEnabled){
+    editMarksContentEl.innerHTML = '';
+    editMarksContentEl.style.height = '0px';
+    editMarksEl.style.display = 'none';
+    return;
+  }
+  editMarksEl.style.display = '';
+  const text = editBodyEl.value.replace(/\r/g,'');
+  const lines = text.split('\n');
+  editMirrorEl.innerHTML = '';
+  for (let i=0;i<lines.length;i++){
+    const span = document.createElement('span');
+    span.className = 'line';
+    span.innerHTML = lines[i].length ? escapeHtml(lines[i]) : ' ';
+    editMirrorEl.appendChild(span);
+    if (i < lines.length-1) editMirrorEl.appendChild(document.createElement('br'));
+  }
+  const overIdx = new Set();
+  lines.forEach((L, i)=>{
+    const visible = L.replace(CHORD_BRACKETS_RE, '');
+    if (visible.length > rowLimitEdit) overIdx.add(i);
+  });
+  editMarksContentEl.innerHTML = '';
+  editMarksContentEl.style.height = editMirrorEl.scrollHeight + 'px';
+  const spans = editMirrorEl.querySelectorAll('.line');
+  spans.forEach((span, i)=>{
+    if (!overIdx.has(i)) return;
+    const top = span.offsetTop + span.offsetHeight - 2;
+    const mark = document.createElement('div');
+    mark.className = 'mark';
+    mark.style.top = top + 'px';
+    editMarksContentEl.appendChild(mark);
+  });
+}
+editBodyEl.addEventListener('scroll', ()=>{
+  editMarksContentEl.style.transform = `translate(${-editBodyEl.scrollLeft}px, ${-editBodyEl.scrollTop}px)`;
+  editMirrorEl.scrollTop = editBodyEl.scrollTop;
+  editMirrorEl.scrollLeft = editBodyEl.scrollLeft;
+});
+['input','change','keyup'].forEach(ev => editBodyEl.addEventListener(ev, rebuildEditMarks));
+window.addEventListener('resize', rebuildEditMarks);
+
+/* ------------------- Dráty UI (search) ------------------- */
+let _searchTO=null;
+editSearchEl.addEventListener('input', ()=>{
+  clearTimeout(_searchTO);
+  _searchTO = setTimeout(()=>{
+    const q = editSearchEl.value;
+    const res = searchSongs(q);
+    renderEditResults(res);
+  }, 120);
+});
+reloadIndexBtn.onclick = ()=> loadSongsIndex().then(()=>{
+  const q = editSearchEl.value;
+  renderEditResults(searchSongs(q));
+});
+saveEditBtn.onclick = saveEditedSong;
+deleteEditBtn.onclick = deleteEditedSong;
+/* ------------------- Dráty UI (songbook manager) ------------------- */
+sbManageLoadBtn.onclick = ()=>{
+  const name = sbManageSelect.value;
+  if (name) loadSongbookForManage(name);
+};
+sbManageClearBtn.onclick = ()=>{ setManagedBook('', []); sbManageStatus(''); };
+sbManageSearchEl.addEventListener('input', ()=>{
+  const q = sbManageSearchEl.value;
+  const res = searchSongs(q).filter(it=> !MANAGED_BOOK.items.some(x=> x.file === it.file));
+  renderSongAddResults(res);
+});
+sbManageSaveBtn.onclick = saveManagedSongbook;
+sbManageReindexBtn.onclick = reindexManagedNumbers;
+
+/* ------------------- Načíst index při startu ------------------- */
+loadSongsIndex();
+function b64utf8_decode(b64){
+  const bin = atob(b64.replace(/\n/g,''));
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+/* ------------------- songs.json – update helper ------------------- */
+async function tryUpdateSongsJson(ctx, patch){
+  try{
+    const path = 'data/songs.json';
+    const getRes = await fetch(`https://api.github.com/repos/${ctx.user}/${ctx.repo}/contents/${encodeURIComponent(path)}`, {
+      headers: { 'Authorization': `Bearer ${ctx.token}`, 'Accept': 'application/vnd.github+json' }
+    });
+    if (!getRes.ok) {
+      console.warn('songs.json nedostupný nebo chráněný, přeskočeno.');
+      return;
+    }
+    const json = await getRes.json();
+    const sha = json.sha;
+    const raw = b64utf8_decode(json.content);
+
+    let arr;
+    try{
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error('songs.json není pole');
+      arr = parsed;
+    }catch(err){
+      console.warn('songs.json nelze parsovat, update přeskočen:', err.message);
+      return;
+    }
+
+    const idx = arr.findIndex(x => x && x.file === patch.file);
+
+    // připrav "books" jako objekt z interního pole {name, number}
+    let booksObj = undefined;
+    if (Array.isArray(patch.songbooks)){
+      booksObj = {};
+      for (const s of patch.songbooks){
+        if (s && s.name && Number.isFinite(s.number)) booksObj[s.name] = s.number;
+      }
+    }
+    if (idx >= 0){
+      const prev = arr[idx] || {};
+      // Vstup ze songbook editoru je brán jako zdroj pravdy (může být i prázdný pro odebrání)
+      const mergedBooks = (booksObj !== undefined) ? booksObj : (prev.books || {});
+
+      arr[idx] = {
+        ...prev,
+        id: patch.file,
+        file: patch.file,
+        title: patch.title || prev.title || '',
+        author: patch.author || prev.author || '',
+        number: (patch.number!=null) ? patch.number : (prev.number ?? null),
+        type: prev.type || 'chordpro',
+        books: mergedBooks
+      };
+      delete arr[idx].songbooks; // uklid starého formátu
+    } else {
+      // nový záznam – ulož vše, co máme
+         const newBooks = booksObj !== undefined ? booksObj : {};
+      arr.push({
+        id: patch.file,
+        file: patch.file,
+        title: patch.title || '',
+        author: patch.author || '',
+        number: (patch.number!=null) ? patch.number : null,
+        type: 'chordpro',
+        books: newBooks
+      });
+    }
+
+
+    const newContent = JSON.stringify(arr, null, 2);
+    const putRes = await fetch(`https://api.github.com/repos/${ctx.user}/${ctx.repo}/contents/${encodeURIComponent(path)}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${ctx.token}`, 'Accept': 'application/vnd.github+json' },
+      body: JSON.stringify({
+        message: `chore(index): update songs.json for ${patch.title || patch.file}`,
+        content: b64utf8(newContent),
+        branch: 'main',
+        sha
+      })
+    });
+    if (!putRes.ok){
+      const t = await putRes.text();
+      console.warn('Nepodařilo se zapsat songs.json:', t);
+    }
+  }catch(e){
+    console.warn('songs.json update vynechán:', e.message);
+  }
+}
+
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' })
+      .then(r => console.log('Zpjěvníček SW scope:', r.scope))
+      .catch(console.error);
+  });
+}
+</script>
+</body>
+</html>
