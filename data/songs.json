@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "id": "songs/zkouska-jan.pro",
+    "file": "songs/zkouska-jan.pro",
+    "title": "Zkouška",
+    "author": "Jan",
+    "number": null,
+    "type": "chordpro",
+    "books": {}
+  }
+]
