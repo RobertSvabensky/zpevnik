@@ -530,23 +530,6 @@ async function sharePlaylistLink(id){
 }
 
 /* ------- Import playlistu (odkaz/JSON) ------- */
-document.getElementById('btnImportPl').onclick = async ()=>{
-  if (tryImportFromHash()) return;
-  const raw = prompt('Vlož odkaz (#import=...) nebo JSON playlistu:');
-  if(!raw) return;
-
-  if (raw.includes('#import=')) { location.href = raw; return; }
-
-  try{
-    const data = JSON.parse(raw);
-    if (!data || !data.id) throw 0;
-    playlists = playlists.filter(p=>p.id!==data.id).concat([data]);
-    savePlaylists(); renderPlaylistList();
-    location.hash = 'pl:'+encodeURIComponent(data.id);
-  }catch(_){
-    alert('Neplatný obsah. Vlož funkční odkaz nebo JSON playlistu.');
-  }
-};
 
 /* ------- navigace mezi views ------- */
 document.getElementById('btnPlaylists').onclick = ()=>{ location.hash='playlists'; };
