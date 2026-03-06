@@ -1516,5 +1516,14 @@
     "books": {
       "Já, písničkář I": 16
     }
+  },
+  {
+    "id": "songs/001-krtek-buty.pro",
+    "file": "songs/001-krtek-buty.pro",
+    "title": "Krtek",
+    "author": "Buty",
+    "number": 1,
+    "type": "chordpro",
+    "books": {}
   }
 ]
